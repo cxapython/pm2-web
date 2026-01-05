@@ -298,13 +298,18 @@ section h2::before {
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 
+.processes article:first-of-type .information {
+  transition: var(--transition);
+}
+
 .processes article:first-of-type .information:hover {
-  background: var(--bg-tertiary);
+  background: #475569;
   cursor: default;
 }
 
 .processes article:first-of-type .information:hover li h3 {
-  background: transparent;
+  background: #475569;
+  color: var(--text-primary);
 }
 
 .processes article:first-of-type .information li h3 {
