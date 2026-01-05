@@ -1,7 +1,7 @@
 {
-  "name": "pm2-web",
+  "name": "pm2-web-modern",
   "version": "3.0.0",
-  "description": "A web based monitor for PM2 - Updated for Node.js 25+",
+  "description": "A web based monitor for PM2 - Updated for Node.js 18+ / 25+",
   "main": "pm2-web.js",
   "engines": {
     "node": ">=18.0.0"
@@ -9,11 +9,16 @@
   "scripts": {
     "start": "node pm2-web.js",
     "test": "node --test test/unit/**/*.js",
-    "dev": "node --watch pm2-web.js"
+    "dev": "node --watch pm2-web.js",
+    "prepublishOnly": "echo 'Ready to publish!'"
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/achingbrain/pm2-web.git"
+    "url": "git://github.com/cxapython/pm2-web.git"
+  },
+  "homepage": "https://github.com/cxapython/pm2-web#readme",
+  "bugs": {
+    "url": "https://github.com/cxapython/pm2-web/issues"
   },
   "dependencies": {
     "express": "^4.21.0",
@@ -46,6 +51,6 @@
     "process",
     "nodejs25"
   ],
-  "author": "achingbrain",
+  "author": "chennan",
   "license": "MIT"
 }
