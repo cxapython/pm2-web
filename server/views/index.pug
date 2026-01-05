@@ -1,8 +1,10 @@
 doctype html
-html(lang='en', ng-app='pm2-web')
+html(lang='zh-CN', ng-app='pm2-web')
   head
-    title PM2 Process Monitor
-    meta(name='viewport', content='width=device-width, user-scalable=no')
+    meta(charset='UTF-8')
+    title PM2 进程监控
+    meta(name='viewport', content='width=device-width, initial-scale=1.0, user-scalable=no')
+    meta(name='description', content='PM2 进程管理器 Web 监控界面')
     script.
       var settings = {
         version: '#{version}'
@@ -22,4 +24,4 @@ html(lang='en', ng-app='pm2-web')
   body
     article(ng-view)
     footer(ng-controller='FooterController')
-      small pm2-web version {{version}}
+      small pm2-web v{{version}} · 支持 Node.js 25+
