@@ -258,25 +258,6 @@ section h2::before {
   text-align: center;
 }
 
-/* Process List Header */
-.processes article:first-of-type .information h3 {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-
-.processes article:first-of-type .information {
-  border-top: none;
-  margin-top: 0;
-}
-
 /* Process Row */
 .processes .information {
   display: flex;
@@ -289,13 +270,13 @@ section h2::before {
   background: var(--bg-hover);
 }
 
-.processes .information h3 {
-  display: none;
-}
-
 .processes .information li {
   list-style: none;
   padding: 0;
+}
+
+.processes .information li h3 {
+  display: none;
 }
 
 .processes .information li p {
@@ -304,6 +285,32 @@ section h2::before {
   font-size: 14px;
   color: var(--text-primary);
   cursor: pointer;
+}
+
+/* Process List Header - First Row */
+.processes article:first-of-type .information {
+  border-top: none;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.processes article:first-of-type .information:hover {
+  background: var(--bg-tertiary);
+}
+
+.processes article:first-of-type .information li h3 {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 12px 16px;
+  margin: 0;
+}
+
+.processes article:first-of-type .information li p {
+  display: none;
 }
 
 /* Column Widths */
