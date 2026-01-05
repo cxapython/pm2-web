@@ -27,7 +27,7 @@
 	</table>
 	<figure id="memory" ng-show={{hostData.pm2.compatible}}>
 		<figcaption>内存 (共 {{hostData.system.memory.total | memory}})</figcaption>
-		<div style="width: {{(hostData.system.memory.free / hostData.system.memory.total) * 100}}%">{{hostData.system.memory.free | memory}} 空闲</div><div style="width: {{100 - ((hostData.system.memory.free / hostData.system.memory.total) * 100)}}%">{{hostData.system.memory.used | memory}} 已用</div>
+		<div class="memory-bar"><div class="free" style="width: {{(hostData.system.memory.free / hostData.system.memory.total) * 100}}%">{{hostData.system.memory.free | memory}} 空闲</div><div class="used" style="width: {{100 - ((hostData.system.memory.free / hostData.system.memory.total) * 100)}}%">{{hostData.system.memory.used | memory}} 已用</div></div>
 	</figure>
 </section>
 <section class="processes" ng-controller="ProcessListController" ng-show={{hostData.pm2.compatible}}>
