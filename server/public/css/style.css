@@ -270,6 +270,10 @@ section h2::before {
   background: var(--bg-hover);
 }
 
+.processes .information:hover li p {
+  background: var(--bg-hover);
+}
+
 .processes .information li {
   list-style: none;
   padding: 0;
@@ -296,6 +300,11 @@ section h2::before {
 
 .processes article:first-of-type .information:hover {
   background: var(--bg-tertiary);
+  cursor: default;
+}
+
+.processes article:first-of-type .information:hover li h3 {
+  background: transparent;
 }
 
 .processes article:first-of-type .information li h3 {

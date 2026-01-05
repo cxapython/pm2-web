@@ -4,9 +4,57 @@ var Autowire = require("wantsit").Autowire,
 	semver = require("semver"),
 	pm2 = require("pm2"),
 	os = require("os"),
+	{ execSync } = require("child_process"),
 	pkg = require(__dirname + "/../../package.json");
 
 var DEFAULT_DEBUG_PORT = 5858;
+
+// 获取更准确的可用内存（macOS 特殊处理）
+function getAvailableMemory() {
+	var total = os.totalmem();
+	
+	if (process.platform === 'darwin') {
+		try {
+			// 在 macOS 上使用 vm_stat 获取更准确的内存信息
+			var vmstat = execSync('vm_stat', { encoding: 'utf8' });
+			var pageSize = 16384; // macOS 默认页面大小
+			
+			// 解析 vm_stat 输出
+			var pageSizeMatch = vmstat.match(/page size of (\d+) bytes/);
+			if (pageSizeMatch) {
+				pageSize = parseInt(pageSizeMatch[1]);
+			}
+			
+			var freeMatch = vmstat.match(/Pages free:\s+(\d+)/);
+			var inactiveMatch = vmstat.match(/Pages inactive:\s+(\d+)/);
+			var speculativeMatch = vmstat.match(/Pages speculative:\s+(\d+)/);
+			var purgeableMatch = vmstat.match(/Pages purgeable:\s+(\d+)/);
+			
+			var freePages = freeMatch ? parseInt(freeMatch[1]) : 0;
+			var inactivePages = inactiveMatch ? parseInt(inactiveMatch[1]) : 0;
+			var speculativePages = speculativeMatch ? parseInt(speculativeMatch[1]) : 0;
+			var purgeablePages = purgeableMatch ? parseInt(purgeableMatch[1]) : 0;
+			
+			// 可用内存 = 空闲 + 非活跃 + 推测 + 可清除
+			var available = (freePages + inactivePages + speculativePages + purgeablePages) * pageSize;
+			return {
+				free: available,
+				total: total,
+				used: total - available
+			};
+		} catch (e) {
+			// 回退到默认方法
+		}
+	}
+	
+	// 其他系统或出错时使用默认方法
+	var free = os.freemem();
+	return {
+		free: free,
+		total: total,
+		used: total - free
+	};
+}
 
 var PM2Listener = function() {
 	EventEmitter.call(this);
@@ -128,10 +176,7 @@ PM2Listener.prototype._mapSystemData = function(processList) {
 			cpu_count: cpus.length,
 			load: [loadavg[0], loadavg[1], loadavg[2]],
 			uptime: os.uptime(),
-			memory: {
-				free: os.freemem(),
-				total: os.totalmem()
-			},
+			memory: getAvailableMemory(),
 			time: now
 		},
 		pm2: {
