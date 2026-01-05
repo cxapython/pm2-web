@@ -1,3 +1,9 @@
+<div class="theme-toggle" onclick="toggleTheme()">
+	<i class="icon-sun theme-icon-light"></i>
+	<i class="icon-moon theme-icon-dark"></i>
+	<span class="theme-label-light">深色模式</span>
+	<span class="theme-label-dark">浅色模式</span>
+</div>
 <h1>PM2 进程监控</h1>
 <ul class="nav nav-tabs" ng-controller="HostListController" ng-hide="tabs.length == 1">
 	<li ng-repeat="tab in tabs" ng-class="{active: tab.selected}">

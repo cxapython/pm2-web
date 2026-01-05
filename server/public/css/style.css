@@ -2,16 +2,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import url('font-awesome.min.css');
 
+/* 通用变量 */
 :root {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
-  --bg-card: #1e293b;
-  --bg-hover: #334155;
-  
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --transition: all 0.3s ease;
   
   --accent-blue: #3b82f6;
   --accent-green: #22c55e;
@@ -19,14 +14,50 @@
   --accent-yellow: #eab308;
   --accent-purple: #a855f7;
   --accent-cyan: #06b6d4;
+}
+
+/* 浅色主题（默认） */
+:root, [data-theme="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e2e8f0;
+  --bg-card: #ffffff;
+  --bg-hover: #f1f5f9;
+  --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  
+  --border-color: #e2e8f0;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  
+  --header-filter: brightness(1);
+  --terminal-bg: #1e293b;
+  --terminal-text: #e2e8f0;
+}
+
+/* 深色主题 */
+[data-theme="dark"] {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-card: #1e293b;
+  --bg-hover: #334155;
+  --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1a1a2e 100%);
+  
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
   
   --border-color: #334155;
   --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
   
-  --radius: 12px;
-  --radius-sm: 8px;
-  --transition: all 0.2s ease;
+  --header-filter: brightness(1.2);
+  --terminal-bg: #0d1117;
+  --terminal-text: #c9d1d9;
 }
 
 * {
@@ -36,11 +67,12 @@
 }
 
 body {
-  background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1a2e 100%);
+  background: var(--bg-gradient);
   min-height: 100vh;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--text-primary);
   line-height: 1.6;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 /* Logo & Header */
@@ -50,7 +82,8 @@ h1 {
   overflow: hidden;
   background: url(../img/logo.png) no-repeat center;
   margin: 20px 0;
-  filter: brightness(1.2);
+  filter: var(--header-filter);
+  transition: filter 0.3s ease;
 }
 
 @media only screen and (-webkit-min-device-pixel-ratio: 1.5) {
@@ -79,6 +112,68 @@ footer small {
   color: var(--text-muted);
   text-align: center;
   display: block;
+}
+
+/* 主题切换按钮 */
+.theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 50px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+}
+
+.theme-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.theme-toggle i {
+  font-size: 16px;
+  color: var(--text-primary);
+  transition: var(--transition);
+}
+
+.theme-toggle span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+
+/* 深色主题：显示太阳图标和"浅色模式"文字 */
+[data-theme="dark"] .theme-icon-light,
+[data-theme="dark"] .theme-label-light {
+  display: none;
+}
+
+[data-theme="dark"] .theme-icon-dark,
+[data-theme="dark"] .theme-label-dark {
+  display: inline;
+}
+
+/* 浅色主题：显示月亮图标和"深色模式"文字 */
+[data-theme="light"] .theme-icon-light,
+:root:not([data-theme="dark"]) .theme-icon-light,
+[data-theme="light"] .theme-label-light,
+:root:not([data-theme="dark"]) .theme-label-light {
+  display: inline;
+}
+
+[data-theme="light"] .theme-icon-dark,
+:root:not([data-theme="dark"]) .theme-icon-dark,
+[data-theme="light"] .theme-label-dark,
+:root:not([data-theme="dark"]) .theme-label-dark {
+  display: none;
 }
 
 /* Navigation Tabs */
@@ -574,15 +669,16 @@ section h2::before {
 
 /* Logs Terminal */
 .processes .details ul {
-  background: #0d1117;
+  background: var(--terminal-bg);
   border-radius: var(--radius-sm);
-  border: 1px solid #30363d;
-  color: #c9d1d9;
+  border: 1px solid var(--border-color);
+  color: var(--terminal-text);
   font-family: 'SF Mono', Monaco, 'Lucida Console', monospace;
   height: 400px;
   margin: 10px 0;
   overflow: auto;
   padding: 16px;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 .processes .details ul li {
