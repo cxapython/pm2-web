@@ -9,11 +9,25 @@
   --transition: all 0.3s ease;
   
   --accent-blue: #3b82f6;
-  --accent-green: #22c55e;
-  --accent-red: #ef4444;
   --accent-yellow: #eab308;
   --accent-purple: #a855f7;
   --accent-cyan: #06b6d4;
+}
+
+/* 浅色主题使用更亮的颜色 */
+:root, [data-theme="light"] {
+  --accent-green: #4ade80;
+  --accent-red: #f87171;
+  --memory-green: linear-gradient(135deg, #4ade80, #86efac);
+  --memory-red: linear-gradient(135deg, #f87171, #fca5a5);
+}
+
+/* 深色主题使用原来的颜色 */
+[data-theme="dark"] {
+  --accent-green: #22c55e;
+  --accent-red: #ef4444;
+  --memory-green: linear-gradient(135deg, #22c55e, #16a34a);
+  --memory-red: linear-gradient(135deg, #ef4444, #dc2626);
 }
 
 /* 浅色主题（默认） */
@@ -322,12 +336,12 @@ section h2::before {
 }
 
 .system figure#memory .memory-bar .free {
-  background: linear-gradient(135deg, var(--accent-green), #16a34a);
+  background: var(--memory-green);
   color: white;
 }
 
 .system figure#memory .memory-bar .used {
-  background: linear-gradient(135deg, var(--accent-red), #dc2626);
+  background: var(--memory-red);
   color: white;
 }
 
