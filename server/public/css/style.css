@@ -199,12 +199,15 @@ section h2::before {
   margin-bottom: 16px;
 }
 
-.system figure > div {
-  display: inline-block;
-  vertical-align: middle;
+.system figure#memory {
+  display: block;
+}
+
+.system figure#memory > div {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 40px;
-  line-height: 40px;
-  text-align: center;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -212,15 +215,17 @@ section h2::before {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 0 12px;
+  vertical-align: top;
 }
 
-.system figure > div:nth-child(2) {
+.system figure#memory > div:first-of-type {
   background: linear-gradient(135deg, var(--accent-green), #16a34a);
   color: white;
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 
-.system figure > div:last-child {
+.system figure#memory > div:last-of-type {
   background: linear-gradient(135deg, var(--accent-red), #dc2626);
   color: white;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
