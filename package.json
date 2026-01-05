@@ -1,5 +1,5 @@
 {
-  "name": "pm2-web-modern",
+  "name": "pm2-web-cxa",
   "version": "3.0.0",
   "description": "A web based monitor for PM2 - Updated for Node.js 18+ / 25+",
   "main": "pm2-web.js",
