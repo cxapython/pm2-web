@@ -1,16 +1,15 @@
 var winston = require("winston"),
-	Container = require("wantsit").Container
-	Express = require("express"),
+	Container = require("wantsit").Container,
+	express = require("express"),
 	http = require("http"),
 	https = require("https"),
 	path = require("path"),
-	WebSocketServer = require("ws").Server,
+	WebSocketServer = require("ws").WebSocketServer,
 	EventEmitter = require("wildemitter"),
 	util = require("util"),
-	fs = require("fs"),
-	methodOverride = require('method-override');
+	fs = require("fs");
 
-var REQUIRED_PM2_VERSION = "0.11.0";
+var REQUIRED_PM2_VERSION = "5.0.0";
 
 PM2Web = function(options) {
 	EventEmitter.call(this);
@@ -18,13 +17,19 @@ PM2Web = function(options) {
 	// create container
 	this._container = new Container();
 
-	// set up logging
-	this._container.createAndRegister("logger", winston.Logger, {
-		transports: [
-			new (winston.transports.Console)({
-				timestamp: true,
-				colorize: true
+	// set up logging with winston 3.x
+	this._container.createAndRegister("logger", winston.createLogger, {
+		level: 'info',
+		format: winston.format.combine(
+			winston.format.timestamp(),
+			winston.format.colorize(),
+			winston.format.printf(({ level, message, timestamp, ...meta }) => {
+				const metaStr = Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
+				return `${timestamp} ${level}: ${message}${metaStr}`;
 			})
+		),
+		transports: [
+			new winston.transports.Console()
 		]
 	});
 
@@ -38,8 +43,7 @@ PM2Web = function(options) {
 	// web controllers
 	this._container.createAndRegister("homeController", require(__dirname + "/routes/Home"));
 
-	// listens for events
-	this._container.register("pm2InterfaceFactory", require("pm2-interface"));
+	// listens for events - use PM2 programmatic API
 	this._container.createAndRegister("pm2Listener", require(__dirname + "/components/PM2Listener"));
 
 	// create express
@@ -48,19 +52,20 @@ PM2Web = function(options) {
 	// http(s) server
 	this._server = this._createServer(this._express);
 
-	// web sockets
-	this._container.createAndRegister("webSocketResponder", require(__dirname + "/components/WebSocketResponder"));
- 	this._container.createAndRegister("webSocketServer", WebSocketServer, {
+	// web sockets - Create WebSocketServer directly (ws 8.x is an ES6 class)
+	var wss = new WebSocketServer({
 		server: this._server,
 		path: "/ws"
 	});
+	this._container.register("webSocketServer", wss);
+	this._container.createAndRegister("webSocketResponder", require(__dirname + "/components/WebSocketResponder"));
 
 	// holds host data
 	this._container.createAndRegister("hostList", require(__dirname + "/components/ServerHostList"));
 
 	// make errors a little more descriptive
 	process.on("uncaughtException", function (exception) {
-		this._container.find("logger").error("PM2", "Uncaught exception", exception && exception.stack ? exception.stack : "No stack trace available");
+		this._container.find("logger").error("Uncaught exception", { stack: exception && exception.stack ? exception.stack : "No stack trace available" });
 
 		throw exception;
 	}.bind(this));
@@ -73,20 +78,20 @@ PM2Web = function(options) {
 		if (message == "shutdown") {
 			this.stop();
 		}
-	});
+	}.bind(this));
 
 	// make sure we shut down cleanly
 	process.on("exit", this.stop.bind(this));
 };
 util.inherits(PM2Web, EventEmitter);
 
-PM2Web.prototype._route = function(express, controller, url, method) {
+PM2Web.prototype._route = function(expressApp, controller, url, method) {
 	var component = this._container.find(controller);
 
-	express[method](url, component[method].bind(component));
+	expressApp[method](url, component[method].bind(component));
 };
 
-PM2Web.prototype._createServer = function(express) {
+PM2Web.prototype._createServer = function(expressApp) {
 	var config = this._container.find("config");
 
 	if(config.get("www:ssl:enabled")) {
@@ -98,14 +103,14 @@ PM2Web.prototype._createServer = function(express) {
 				httpsUrl += ":" + config.get("www:ssl:port");
 			}
 
-			var redirectApp = Express();
-			redirectApp.get("*",function(request, response){
+			var redirectApp = express();
+			redirectApp.get("*", function(request, response){
 				response.redirect(httpsUrl + request.url);
 			});
 			process.nextTick(function() {
 				this._redirectServer = http.createServer(redirectApp);
 				this._redirectServer.listen(config.get("www:port"), function() {
-					this._container.find("logger").info("PM2Web", "HTTP to HTTPS upgrade server listening on port " + this._redirectServer.address().port);
+					this._container.find("logger").info("HTTP to HTTPS upgrade server listening on port " + this._redirectServer.address().port);
 				}.bind(this));
 			}.bind(this));
 		}
@@ -117,8 +122,8 @@ PM2Web.prototype._createServer = function(express) {
 		}, this._express);
 	}
 
-	return http.createServer(express);
-}
+	return http.createServer(expressApp);
+};
 
 PM2Web.prototype._createExpress = function() {
 	var config = this._container.find("config");
@@ -128,33 +133,60 @@ PM2Web.prototype._createExpress = function() {
 		port = config.get("www:ssl:port");
 	}
 
-	var express = Express();
-	express.set("port", port);
-	express.set("view engine", "jade");
-	express.set("views", __dirname + "/views");
+	var app = express();
+	app.set("port", port);
+	app.set("view engine", "pug");
+	app.set("views", __dirname + "/views");
 
-	// create routes
-	this._route(express, "homeController", "/", "get");
-	this._route(express, "homeController", "/hosts/:host", "get");
+	// Express 4.x middleware
+	app.use(express.urlencoded({ extended: true }));
+	app.use(express.json());
 
+	// HTTP Basic Auth (if enabled)
 	if(config.get("www:authentication:enabled")) {
-		express.use(Express.basicAuth(config.get("www:authentication:username"), config.get("www:authentication:password")));
+		var username = config.get("www:authentication:username");
+		var password = config.get("www:authentication:password");
+		
+		app.use(function(req, res, next) {
+			var auth = req.headers.authorization;
+			if (!auth) {
+				res.setHeader('WWW-Authenticate', 'Basic realm="pm2-web"');
+				return res.status(401).send('Authentication required');
+			}
+			
+			var parts = auth.split(' ');
+			if (parts.length !== 2 || parts[0] !== 'Basic') {
+				return res.status(401).send('Invalid authentication');
+			}
+			
+			var credentials = Buffer.from(parts[1], 'base64').toString().split(':');
+			var user = credentials[0];
+			var pass = credentials.slice(1).join(':');
+			
+			if (user === username && pass === password) {
+				return next();
+			}
+			
+			res.setHeader('WWW-Authenticate', 'Basic realm="pm2-web"');
+			return res.status(401).send('Invalid credentials');
+		});
 	}
 
-	express.use(Express.logger("dev"));
-	express.use(Express.urlencoded())
-	express.use(Express.json())
-	express.use(methodOverride('X-HTTP-Method'));          // Microsoft
-	express.use(methodOverride('X-HTTP-Method-Override')); // Google/GData, default option
-	express.use(methodOverride('X-Method-Override'));      // IBM
-	express.use(express.router);
-	express.use(Express.static(__dirname + "/public"));
+	// create routes
+	this._route(app, "homeController", "/", "get");
+	this._route(app, "homeController", "/hosts/:host", "get");
 
-	// development only
-	express.use(Express.errorHandler());
+	// static files
+	app.use(express.static(__dirname + "/public"));
 
-	return express;
-}
+	// error handler
+	app.use(function(err, req, res, next) {
+		console.error(err.stack);
+		res.status(500).send('Something broke!');
+	});
+
+	return app;
+};
 
 PM2Web.prototype.setAddress = function(address) {
 	this._address = address;
@@ -175,49 +207,38 @@ PM2Web.prototype.start = function() {
 
 			this.emit("start");
 		}.bind(this));
-
-		if(config.get("mdns:enabled")) {
-			try {
-				var mdns = require("mdns2");
-
-				this._container.find("logger").info("Starting MDNS adverisment with name", this._container.find("config").get("mdns:name"));
-
-				// publish via Bonjour
-				this._advert = mdns.createAdvertisement(mdns.tcp("http"), this._express.get("port"), {
-					name: config.get("mdns:name")
-				});
-				this._advert.start();
-			} catch(e) {
-				this._container.find("logger").warn("Could not start mdns argument - did mdns2 install correctly?", e.message);
-			}
-		}
 	}.bind(this));
 };
 
 PM2Web.prototype.stop = function() {
 	var logger = this._container.find("logger");
-	logger = console;
 
-	logger.info("PM2Web", "Shutting down Express");
-	this._server.close(function() {
-		logger.info("PM2Web", "Express shut down.");
-	});
+	if (this._stopping) return;
+	this._stopping = true;
 
-	logger.info("PM2Web", "Shutting WebSocket");
-	this._container.find("webSocketServer").close();
+	logger.info("Shutting down Express");
+	if (this._server) {
+		this._server.close(function() {
+			logger.info("Express shut down.");
+		});
+	}
 
-	logger.info("PM2Web", "Disconnecting from pm2-interface");
-	this._container.find("pm2Listener").close();
+	logger.info("Shutting WebSocket");
+	var wsServer = this._container.find("webSocketServer");
+	if (wsServer) {
+		wsServer.close();
+	}
 
-	if(this._advert) {
-		logger.info("PM2Web", "Shutting down MDNS Advert");
-		this._advert.stop();
+	logger.info("Disconnecting from PM2");
+	var pm2Listener = this._container.find("pm2Listener");
+	if (pm2Listener) {
+		pm2Listener.close();
 	}
 
 	if(this._redirectServer) {
-		logger.info("PM2Web", "Shutting down HTTP to HTTPS upgrade server");
+		logger.info("Shutting down HTTP to HTTPS upgrade server");
 		this._redirectServer.close(function() {
-			logger.info("PM2Web", "HTTP to HTTPS upgrade server shut down.");
+			logger.info("HTTP to HTTPS upgrade server shut down.");
 		});
 	}
 };

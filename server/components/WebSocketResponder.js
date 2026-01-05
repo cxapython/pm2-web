@@ -9,50 +9,79 @@ var WebSocketResponder = function() {
 	this._webSocketServer = Autowire;
 	this._hostList = Autowire;
 	this._events = [];
-}
+};
 
 WebSocketResponder.prototype.afterPropertiesSet = function() {
 	var logger = this._logger;
+	var self = this;
 
+	// Add broadcast method to WebSocket server (ws 8.x API)
 	this._webSocketServer.broadcast = function(data) {
 		var message = JSON.stringify(data);
 
 		this.clients.forEach(function(client) {
 			try {
-				client.send(message);
+				// ws 8.x uses readyState constants
+				if (client.readyState === 1) { // WebSocket.OPEN
+					client.send(message);
+				}
 			} catch(e) {
-				logger.warn("WebSocketResponder", "Error broadcasing to client", e.message);
+				logger.warn("Error broadcasting to client", { error: e.message });
 			}
-		}.bind(this));
+		});
 	};
-	this._webSocketServer.on("connection", function(client) {
+
+	// Handle new connections (ws 8.x API)
+	this._webSocketServer.on("connection", function(client, request) {
+		logger.info("New WebSocket connection from " + (request.socket.remoteAddress || 'unknown'));
+
 		client.on("message", function(message) {
-			var request = JSON.parse(message);
+			try {
+				// ws 8.x may provide Buffer or string
+				var messageStr = message;
+				if (Buffer.isBuffer(message)) {
+					messageStr = message.toString('utf8');
+				}
+				
+				var request = JSON.parse(messageStr);
 
-			if(request.method && request.args && this[request.method]) {
-				request.args.unshift(client);
-
-				this[request.method].apply(this, request.args);
+				if(request.method && request.args && self[request.method]) {
+					request.args.unshift(client);
+					self[request.method].apply(self, request.args);
+				}
+			} catch (e) {
+				logger.warn("Error processing WebSocket message", { error: e.message });
 			}
-		}.bind(this));
+		});
 
-		// send config and all host data
-		client.send(JSON.stringify([{
+		client.on("error", function(error) {
+			logger.warn("WebSocket client error", { error: error.message });
+		});
+
+		client.on("close", function() {
+			logger.info("WebSocket client disconnected");
+		});
+
+		// Send config and all host data
+		try {
+			client.send(JSON.stringify([{
 				method: "onConfig",
 				args: [{
-					graph: this._config.get("graph"),
-					logs: this._config.get("logs"),
-					updateFrequency: this._config.get("updateFrequency"),
-					requiredPm2Version: this._config.get("requiredPm2Version")
+					graph: self._config.get("graph"),
+					logs: self._config.get("logs"),
+					updateFrequency: self._config.get("updateFrequency"),
+					requiredPm2Version: self._config.get("requiredPm2Version")
 				}]
 			}, {
 				method: "onHosts",
 				args: [
-					this._hostList.getHosts()
+					self._hostList.getHosts()
 				]
-			}
-		]));
-	}.bind(this));
+			}]));
+		} catch (e) {
+			logger.warn("Error sending initial data to client", { error: e.message });
+		}
+	});
 
 	// broadcast error logging
 	this._pm2Listener.on("log:err", this._broadcastLog.bind(this, "error"));
@@ -62,67 +91,74 @@ WebSocketResponder.prototype.afterPropertiesSet = function() {
 
 	// broadcast exceptions
 	this._pm2Listener.on("process:exception", function(event) {
-		var data = event.data ? event.data : event.err
+		var data = event.data ? event.data : event.err;
 		var host, id, message, stack;
 
-		host = event.name
+		host = event.name;
 
 		if(event.process) {
 			id = event.process.pm_id;
 		}
 
-		message = data.message;
-		stack = data.stack;
-
-		if(!id) {
-			return
+		if (data) {
+			message = data.message;
+			stack = data.stack;
 		}
 
-		this._hostList.addLog(host, id, "error", stack);
+		if(id === undefined || id === null) {
+			return;
+		}
 
-		this._events.push({
+		self._hostList.addLog(host, id, "error", stack || message || "Unknown exception");
+
+		self._events.push({
 			method: "onProcessException",
 			args: [
 				host, id, message, stack
 			]
 		});
-	}.bind(this));
+	});
 
 	// broadcast system data updates
 	this._pm2Listener.on("systemData", function(data) {
-		this._events.push({
+		self._events.push({
 			method: "onSystemData",
 			args: [
 				data
 			]
 		});
-	}.bind(this));
+	});
 
 	setInterval(this._processEvents.bind(this), this._config.get("ws:frequency"));
 };
 
 WebSocketResponder.prototype._processEvents = function() {
-	if(this._events.length == 0) {
+	if(this._events.length === 0) {
 		return;
 	}
 
 	this._webSocketServer.broadcast(this._events);
 
 	this._events.length = 0;
-}
+};
 
 WebSocketResponder.prototype._broadcastLog = function(type, event) {
+	if (!event.process) return;
+	
 	var id = event.process.pm_id;
 	var log;
 
-	// ugh
+	// Handle various data formats
 	if(event.data) {
 		if(event.data.str) {
-			log = event.data.str
+			log = event.data.str;
 		} else if(Array.isArray(event.data)) {
-			log = new Buffer(event.data).toString('utf8');
+			// Use Buffer.from() instead of deprecated new Buffer()
+			log = Buffer.from(event.data).toString('utf8');
+		} else if(Buffer.isBuffer(event.data)) {
+			log = event.data.toString('utf8');
 		} else {
-			log = event.data.toString()
+			log = event.data.toString();
 		}
 	} else if(event.str) {
 		log = event.str;
@@ -133,7 +169,7 @@ WebSocketResponder.prototype._broadcastLog = function(type, event) {
 	}
 
 	if(log.trim) {
-		log = log.trim()
+		log = log.trim();
 	}
 
 	this._hostList.addLog(event.name, id, type, log);

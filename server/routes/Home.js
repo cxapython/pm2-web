@@ -1,4 +1,4 @@
-var Autowire = require("wantsit").Autowire;
+var Autowire = require("wantsit").Autowire,
 	pkg = require(__dirname + "/../../package.json");
 
 var HomeController = function() {

@@ -1,12 +1,13 @@
 var Autowire = require("wantsit").Autowire,
 	cjson = require("cjson"),
 	fs = require("fs"),
-  argv = require("minimist")(process.argv.slice(2)),
-	pwuid = require('pwuid');
+	os = require("os"),
+	path = require("path"),
+	argv = require("minimist")(process.argv.slice(2));
 
-var DEFAULT_CONFIG_FILE = __dirname + "/../../config.json";
+var DEFAULT_CONFIG_FILE = path.join(__dirname, "/../../config.json");
 var GLOBAL_CONFIG_FILE = "/etc/pm2-web/config.json";
-var USER_CONFIG_FILE = process.env["HOME"] + "/.config/pm2-web/config.json";
+var USER_CONFIG_FILE = path.join(os.homedir(), ".config/pm2-web/config.json");
 
 var Configuration = function(options) {
 	this._logger = Autowire;
@@ -37,16 +38,16 @@ var Configuration = function(options) {
 	this._override(options || {}, this._config);
 
 	this._normaliseHosts();
-}
+};
 
 Configuration.prototype.afterPropertiesSet = function() {
 	// need to rethink this
 	if(argv["config"]) {
-		this._logger.info("Configuration", "Loading config file from", argv["config"]);
+		this._logger.info("Loading config file from " + argv["config"]);
 	} else if (fs.existsSync(USER_CONFIG_FILE)) {
-		this._logger.info("Configuration", "Loading config file from", USER_CONFIG_FILE);
+		this._logger.info("Loading config file from " + USER_CONFIG_FILE);
 	} else if (fs.existsSync(GLOBAL_CONFIG_FILE)) {
-		this._logger.info("Configuration", "Loading config file from", GLOBAL_CONFIG_FILE);
+		this._logger.info("Loading config file from " + GLOBAL_CONFIG_FILE);
 	}
 
 	// do not print passwords in the logs...
@@ -54,28 +55,22 @@ Configuration.prototype.afterPropertiesSet = function() {
 	config.www.authentication.password = "**** LA LA LA, NOTHING TO SEE HERE ****";
 	config.www.ssl.passphrase = "**** LA LA LA, NOTHING TO SEE HERE ****";
 
-	this._logger.info("Configuration", "Loaded default configuration from", DEFAULT_CONFIG_FILE);
-	this._logger.info("Configuration", "Final configuration:", JSON.stringify(config, null, 2));
-}
+	this._logger.info("Loaded default configuration from " + DEFAULT_CONFIG_FILE);
+	this._logger.info("Final configuration: " + JSON.stringify(config, null, 2));
+};
 
 Configuration.prototype._loadConfigFile = function() {
 	// try to find a config file
 	if(argv["config"]) {
-		// if a config file has been specified make it override all settings
-		//this._logger.info("Loading config file from", this.get("config"));
 		return cjson.load(argv["config"]);
 	} else if (fs.existsSync(USER_CONFIG_FILE)) {
-		// otherwise if a user specific config file is present, make that override all settings
-		//this._logger.info("Loading config file from", USER_CONFIG_FILE);
 		return cjson.load(USER_CONFIG_FILE);
 	} else if (fs.existsSync(GLOBAL_CONFIG_FILE)) {
-		// otherwise if a global config file is present, make that override all settings
-		//this._logger.info("Loading config file from", GLOBAL_CONFIG_FILE);
 		return cjson.load(GLOBAL_CONFIG_FILE);
 	}
 
 	return {};
-}
+};
 
 Configuration.prototype._normaliseHosts = function() {
 	var args = this.get("pm2");
@@ -114,7 +109,7 @@ Configuration.prototype._normaliseHosts = function() {
 		args = [args];
 	}
 
-	var userDetails = pwuid()
+	var homeDir = os.homedir();
 
 	// ensure data is correct for each host
 	args.forEach(function(host) {
@@ -123,11 +118,11 @@ Configuration.prototype._normaliseHosts = function() {
 		host.events = host.events || "~/.pm2/pub.sock";
 
 		if(host.rpc.substring(0, 1) == "~") {
-			host.rpc = userDetails.dir + host.rpc.substring(1)
+			host.rpc = homeDir + host.rpc.substring(1);
 		}
 
 		if(host.events.substring(0, 1) == "~") {
-			host.events = userDetails.dir + host.events.substring(1)
+			host.events = homeDir + host.events.substring(1);
 		}
 
 		if(host.inspector === undefined) {
@@ -136,7 +131,7 @@ Configuration.prototype._normaliseHosts = function() {
 	});
 
 	this.set("pm2", args);
-}
+};
 
 Configuration.prototype._arrayify = function(arg) {
 	if(!arg) {
@@ -148,7 +143,7 @@ Configuration.prototype._arrayify = function(arg) {
 	}
 
 	return [arg];
-}
+};
 
 Configuration.prototype.get = function(key) {
 	if(!this._config || !key) {
@@ -166,7 +161,7 @@ Configuration.prototype.get = function(key) {
 	});
 
 	return value;
-}
+};
 
 Configuration.prototype.set = function(key, value) {
 	if(!this._config || !key) {
@@ -174,7 +169,7 @@ Configuration.prototype.set = function(key, value) {
 	}
 
 	this._apply(key, value, this._config);
-}
+};
 
 Configuration.prototype._apply = function(key, value, target) {
 	var parts;
@@ -196,7 +191,7 @@ Configuration.prototype._apply = function(key, value, target) {
 			target = target[property];
 		}
 	});
-}
+};
 
 Configuration.prototype._defaults = function(object, defaults) {
 	if(typeof object == "undefined" || object == null) {
@@ -235,8 +230,8 @@ Configuration.prototype._defaults = function(object, defaults) {
 		return output;
 	}
 
-	this._logger.error("Configuration", "Don't know what to do with", object, "expected", defaults);
-}
+	console.error("Configuration: Don't know what to do with", object, "expected", defaults);
+};
 
 Configuration.prototype._override = function(source, target) {
 	Object.keys(source).forEach(function(key) {
@@ -256,6 +251,6 @@ Configuration.prototype._override = function(source, target) {
 			this._override(source[key], target[key]);
 		}
 	}.bind(this));
-}
+};
 
 module.exports = Configuration;

@@ -1,219 +1,275 @@
-# Deprecation warning
-
-Since it's no longer possible to monitor `pm2` running on multiple machines I'm not really working on `pm2-web` any more.
-
-For an alternative, check out [Guvnor](https://www.npmjs.com/package/guvnor) - a process manager with support for multiple hosts, unix based permissions, a far more capable web interface and more.
-
 # pm2-web
-[![Dependency Status](https://david-dm.org/achingbrain/pm2-web.svg?theme=shields.io)](https://david-dm.org/achingbrain/pm2-web) [![devDependency Status](https://david-dm.org/achingbrain/pm2-web/dev-status.svg?theme=shields.io)](https://david-dm.org/achingbrain/pm2-web#info=devDependencies) [![Build Status](https://img.shields.io/travis/achingbrain/pm2-web/master.svg)](https://travis-ci.org/achingbrain/pm2-web) [![Coverage Status](http://img.shields.io/coveralls/achingbrain/pm2-web/master.svg)](https://coveralls.io/r/achingbrain/pm2-web)
 
-A web based monitor for [PM2](https://github.com/Unitech/pm2).
+[![Node.js 25+](https://img.shields.io/badge/node-%3E%3D25.0.0-brightgreen)](https://nodejs.org/)
+[![PM2 5.x](https://img.shields.io/badge/pm2-%3E%3D5.0.0-blue)](https://pm2.keymetrics.io/)
 
-![Screenshot of web monitor](https://raw.github.com/achingbrain/pm2-web/master/assets/screenshot-1.0.png)
+[PM2](https://github.com/Unitech/pm2) 进程管理器的 Web 监控界面。
 
-## Multiple hosts
+![pm2-web 截图](https://raw.github.com/achingbrain/pm2-web/master/assets/screenshot-1.0.png)
 
-With the release of 0.11 pm2 no longer uses TCP sockets for the event bus, instead using unix sockets.  TCP sockets make monitoring hosts remotely possible so that functionality is currently broken.
+## 特性
 
-Hopefully the pm2 team have a solution for this.
+- 🖥️ 实时监控 PM2 管理的所有进程
+- 📊 显示 CPU、内存使用率和系统负载
+- 🔄 支持停止、重启、重载进程
+- 📝 实时日志输出查看
+- 🔒 支持 HTTP 基本认证
+- 🔐 支持 HTTPS/SSL
+- ⚡ WebSocket 实时数据更新
 
-## Prerequisites
+## 系统要求
 
-For debugging to work, [node-inspector](https://www.npmjs.org/package/node-inspector) must be installed and running on the same machine as pm2 (not necessarily the same as pm2-web).
+- **Node.js** >= 18.0.0 (已测试支持 Node.js 25)
+- **PM2** >= 5.0.0
 
-## To run
+## 安装
 
-Install pm2-web:
+### 全局安装（推荐）
 
+```bash
+npm install -g pm2-web
 ```
-$ npm install -g pm2-web
+
+### 本地安装
+
+```bash
+git clone https://github.com/achingbrain/pm2-web.git
+cd pm2-web
+npm install
 ```
 
-Then run:
+## 使用方法
 
+### 启动
+
+```bash
+# 全局安装后
+pm2-web
+
+# 或本地运行
+npm start
+
+# 或开发模式（自动重启）
+npm run dev
 ```
-$ pm2-web
-```
 
-## Configuration
+启动后访问 `http://localhost:9000` 即可查看 PM2 进程监控界面。
 
-All configuration options are documented in the [default configuration file](https://github.com/achingbrain/pm2-web/blob/master/config.json).
+## 配置
 
-pm2-web will load one of the following files if they exist (in order of preference)
+pm2-web 会按以下顺序加载配置文件：
 
- - A file specified by the `--config /path/to/config.json` argument
- - From the current users' home directory: `~/.config/pm2-web/config.json`
- - A global configuration file: `/etc/pm2-web/config.json`
+1. 命令行参数 `--config /path/to/config.json`
+2. 用户配置文件 `~/.config/pm2-web/config.json`
+3. 全局配置文件 `/etc/pm2-web/config.json`
 
-The default configuration file is always loaded and other config files will be applied to the default configuration.
+### 配置文件示例
 
-The configuration file(s) loaded and the final configuration object will both be recorded in the logs.
-
-Configuration files are loaded using [cjson](https://www.npmjs.org/package/cjson) so comments are ok.
-
-All options can be passed as command line arguments and will override any settings found in configuration files.
-
-## Authentication
-
-To use HTTP basic auth, set `www:authentication:enabled` to true in your configuration file.  See the [default configuration file](https://github.com/achingbrain/pm2-web/blob/master/config.json) for more information.
-
-N.b. Your password will be sent in plain text.  If you enable HTTP auth, you should probably enable SSL as well.
-
-### SSL support
-
-pm2-web can start a https server if so desired.  To do so, set `www:ssl:enabled` to true in your configuration file and supply your certificate details.  If you do not have a SSL certificate, the `generate_certificate.sh` script in the `/certs` directory will create a self-signed certificate for you.
-
-## Debugging running processes
-
-To debug a running process, [node-inspector](https://www.npmjs.org/package/node-inspector) must be installed and running on the same host as the process.
-
-Specify the port it's running on as the `inspector` property of pm2:host.  E.g.:
-
-```javascript
+```json
 {
-	"pm2": [{
-		"host": "foo.baz.com",
-		"inspector": 8080
-	}]
+  "www": {
+    "host": "localhost",
+    "address": "0.0.0.0",
+    "port": 9000,
+    "authentication": {
+      "enabled": false,
+      "username": "admin",
+      "password": "password"
+    },
+    "ssl": {
+      "enabled": false,
+      "port": 9001,
+      "key": "/path/to/key.pem",
+      "certificate": "/path/to/cert.pem"
+    }
+  },
+  "updateFrequency": 5000,
+  "logs": {
+    "max": 1000
+  }
 }
 ```
 
-You should then see a debug icon appear next to the stop/restart/reload icons when the process is running.
+### 常用配置选项
 
-Clicking this icon will send a `SIGUSR1` signal to the process to put it into debug mode and open node-inspector in a new window.
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `www:port` | HTTP 服务端口 | 9000 |
+| `www:address` | 绑定地址 | 0.0.0.0 |
+| `www:authentication:enabled` | 启用 HTTP 基本认证 | false |
+| `www:ssl:enabled` | 启用 HTTPS | false |
+| `updateFrequency` | 数据刷新频率（毫秒） | 5000 |
+| `logs:max` | 每个进程保留的最大日志行数 | 1000 |
 
-N.b. you may need to change which source file you are looking at in node-inspector to see anything useful.
+### 命令行参数
 
-### Debugging multiple processes
+所有配置选项都可以通过命令行传递：
 
-By default node will listen for debugger connections on port 5858. If you attempt to debug multiple processes you must specify different debug ports for them:
-
-```
-$ pm2 start --node-args="--debug=7000" foo.js
-$ pm2 start --node-args="--debug=7001" bar.js
-```
-
-### Debugging multiple instances
-
-This is not possible because:
-
-```
-$ pm2 start --node-args="--debug=7000" -i 4 foo.js
+```bash
+pm2-web --www:port 8080 --www:authentication:enabled true
 ```
 
-will start four separate processes all listening on port 7000.
+## HTTP 认证
 
-If you are expecting to debug your process, please only start one of them.
+启用 HTTP 基本认证：
 
-## Reload/restart processes
-
-Restarting a process stops the current process and starts a new one, dropping connections in the process.
-
-Reloading starts a new process in the background, killing the old process after the new one has initialised which reduces downtime.
-
-N.b. your process must exit cleanly (e.g. close sockets, database connections) otherwise the old process will never be killed.
-
-### Hard vs soft reloading
-
-Soft reloading (the default) will cause pm2 to send your process a `shutdown` message and kill it shortly afterwards.  Hard reloading will kill it immediately.
-
-To control this behaviour, specify the following in your config file:
-
-```javascript
+```json
 {
-	"forceHardReload": false
+  "www": {
+    "authentication": {
+      "enabled": true,
+      "username": "your_username",
+      "password": "your_password"
+    }
+  }
 }
 ```
 
-To listen for the `shutdown` event, add the following to your program:
+⚠️ **注意**：密码以明文传输，建议同时启用 SSL。
+
+## SSL/HTTPS 支持
+
+1. 生成证书（如果没有）：
+
+```bash
+cd certs
+./generate_certificate.sh
+```
+
+2. 配置 SSL：
+
+```json
+{
+  "www": {
+    "ssl": {
+      "enabled": true,
+      "port": 9001,
+      "passphrase": "your_passphrase",
+      "key": "/path/to/server.key",
+      "certificate": "/path/to/server.crt"
+    }
+  }
+}
+```
+
+## 进程管理
+
+在 Web 界面中可以对每个进程执行以下操作：
+
+- **停止 (Stop)**: 停止进程
+- **重启 (Restart)**: 停止并重新启动进程（会断开连接）
+- **重载 (Reload)**: 优雅重载（零停机时间）
+
+### 软重载 vs 硬重载
+
+默认使用软重载，PM2 会先发送 `shutdown` 消息，等待进程清理资源后再终止。
+
+要使用硬重载（立即终止），在配置中设置：
+
+```json
+{
+  "forceHardReload": true
+}
+```
+
+监听 shutdown 消息：
 
 ```javascript
 process.on("message", function(message) {
-	if(message == "shutdown") {
-		// do tidy up here
-	}
+  if (message === "shutdown") {
+    // 清理资源（关闭数据库连接等）
+    cleanup();
+    process.exit(0);
+  }
 });
 ```
 
-### Resource usage graphs
+## 图表配置
 
-You can tweak the resource usage graph to be more or less specific.  The thinking here is that lots of processes with lots of process usage data will make your browser a bit crashey.
+资源使用图表支持自定义数据点数量和时间分布：
 
-By default it will retain 1000 resource usage measurements of a process (CPU and memory) over a maximum of five days with 40% of the measurements taken in the last 24 hours, 25% from the day before, 10% each from the two days before that and 5% from the day before that.
-
-The update frequency of the graph is controlled by `--updateFrequency` as detailed above.
-
-```
---graph.datapoints 1000
-```
-
-The number of data points that will be plotted on the graph in total.  If you've got a lot of processes, you may wish to set this to a lowish number to minimise memory consumption in your browser and the pm2-web process itself.
-
-```
---graph.distribution 40 --graph.distribution 25 --graph.distribution 10 --graph.distribution 10 --graph.distribution 5
+```json
+{
+  "graph": {
+    "datapoints": 1000,
+    "distribution": [40, 25, 10, 10, 5]
+  }
+}
 ```
 
-The number of `--graph.distribution` arguments is the number of days worth of data to graph (default 5) and the value is what percentage of `--graph.datapoints` should be plotted on a given day (the first `--graph.distribution` argument is today, the second is yesterday, etc).
+- `datapoints`: 图表显示的最大数据点数
+- `distribution`: 按天分布比例，数组第一项是今天的数据占比
 
-What this means is that any recent resource usage data will have a more accurate representation in the graph at the cost of consuming more memory and older data will be less accurate but also less likely to crash your browser.
+## 调试进程
 
-### Logs
+要调试运行中的进程，需要在进程启动时指定调试端口：
 
-pm2-web will display log lines emitted by monitored processes after pm2-web itself was started.  In order to keep resource usage reasonable by default it will show 1000 log lines.
-
-You can alter this behaviour by specifying `--logs:max`, so for example to lower this to 500 lines:
-
-```
---logs:max 500
+```bash
+pm2 start --node-args="--inspect=9229" app.js
 ```
 
-## Release notes
+然后在配置中指定 inspector 端口：
+
+```json
+{
+  "pm2": [{
+    "host": "localhost",
+    "inspector": 9229
+  }]
+}
+```
+
+## 版本历史
+
+### 3.0.0 (2026)
+
+- 🎉 支持 Node.js 25
+- ⬆️ 升级 Express 4.x
+- ⬆️ 升级 ws 8.x
+- ⬆️ 升级 winston 3.x
+- ⬆️ 使用 pug 替换 jade
+- ⬆️ 使用 PM2 programmatic API 替换已废弃的 pm2-interface
+- 🔧 修复多个兼容性问题
 
 ### 2.0.x
- - Uses 2.x version of pm2-interface, even though it breaks monitoring multiple hosts
- - Shows an error message when attempting to monitor an old/incompatible version of pm2
 
-### 1.6.x
+- 使用 pm2-interface 2.x 版本
 
- - Allow reloading of processes as well as restarting
- - Debug button added to use node-inspector to debug running processes
- - Batch UI updates together in an attempt to improve performance
- - Supports http basic auth
- - Supports serving over HTTPS
- - Serve websockets and UI from a single port to make proxying easier
+### 1.x.x
 
-### 1.5.x
+- 初始版本
+- 进程列表、启停重启
+- 资源使用图表
+- 日志查看
+- HTTP 认证和 SSL 支持
 
- - Introduced external configuration file
+## 开发
 
-### 1.4.x
+```bash
+# 安装依赖
+npm install
 
- - Swapped d3/xCharts for HighCharts due to a memory leak
+# 开发模式运行（自动重启）
+npm run dev
 
-### 1.3.x
+# 运行测试
+npm test
+```
 
- - Display logs from processes emitted after pm2-web was started
- - Caches logging output between browser refreshes
- - Respects ANSI colour in logging output
+## 贡献
 
-### 1.2.x
+欢迎提交 Pull Request！请确保：
 
- - Must have been something interesting here
+1. 代码通过测试
+2. 遵循现有代码风格
+3. 更新相关文档
 
-### 1.1.x
+## 许可证
 
- - Displays graphs of memory and cpu output
+MIT License
 
-### 1.0.x
+## 致谢
 
- - Initial release
- - Process listing
- - Restarting, stopping & starting processes
-
-## Credits
-
-Code by [achingbrain](http://github.com/achingbrain), originally based on work done by [dunxrion](https://github.com/dunxrion).
-
-Uses [pm2](https://github.com/unitech/pm2) and [pm2-interface](https://github.com/unitech/pm2-interface) by [unitech](https://github.com/unitech).
-
-Special thanks to [joewalnes](https://github.com/joewalnes) for [reconnecting-websocket](https://github.com/joewalnes/reconnecting-websocket) and [Luegg](https://github.com/Luegg) for [angularjs-scroll-glue](https://github.com/Luegg/angularjs-scroll-glue).
+- 原作者 [achingbrain](http://github.com/achingbrain)
+- [PM2](https://github.com/unitech/pm2) 团队
+- [reconnecting-websocket](https://github.com/joewalnes/reconnecting-websocket) by [joewalnes](https://github.com/joewalnes)

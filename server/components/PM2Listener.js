@@ -2,6 +2,8 @@ var Autowire = require("wantsit").Autowire,
 	EventEmitter = require("wildemitter"),
 	util = require("util"),
 	semver = require("semver"),
+	pm2 = require("pm2"),
+	os = require("os"),
 	pkg = require(__dirname + "/../../package.json");
 
 var DEFAULT_DEBUG_PORT = 5858;
@@ -11,256 +13,304 @@ var PM2Listener = function() {
 
 	this._config = Autowire;
 	this._logger = Autowire;
-	this._pm2InterfaceFactory = Autowire;
 
-	this._pm2List = {};
-}
+	this._connected = false;
+	this._intervalId = null;
+};
 util.inherits(PM2Listener, EventEmitter);
 
 PM2Listener.prototype.afterPropertiesSet = function() {
-	this._config.get("pm2").forEach(function(pm2Details) {
-		this._connect(pm2Details);
-	}.bind(this));
-}
+	this._connect();
+};
 
 PM2Listener.prototype.close = function() {
-	Object.keys(this._pm2List).forEach(function(key) {
-		this._pm2List[key].disconnect();
-	}.bind(this));
-}
-
-PM2Listener.prototype._connect = function(pm2Details) {
-	this._logger.debug("PM2Listener", "Connecting to", pm2Details.host, "RPC port", pm2Details.rpc, "Event port", pm2Details.events);
-
-	var remote = this._pm2InterfaceFactory({
-		sub_port: pm2Details.events,
-		rpc_port: pm2Details.rpc,
-		bind_host: pm2Details.host
-	});
-
-	remote.on("ready", this._pm2RPCSocketReady.bind(this, remote, pm2Details));
-	remote.on("closed", this._pm2RPCSocketClosed.bind(this, remote));
-	remote.on("close", this._pm2EventSocketClosed.bind(this, remote));
-	remote.on("reconnecting", this._pm2EventSocketReconnecting.bind(this, remote));
-}
-
-PM2Listener.prototype._pm2RPCSocketReady = function(pm2Interface, pm2Details) {
-	if(this._pm2List[pm2Interface.bind_host]) {
-		return;
+	if (this._intervalId) {
+		clearInterval(this._intervalId);
+		this._intervalId = null;
 	}
-
-	this._logger.info("PM2Listener", pm2Interface.bind_host, "RPC socket ready");
-
-	if(!pm2Interface.rpc.getVersion) {
-		pm2Interface.pm2 = {
-			version: "OBSOLETE",
-			compatible: false
-		};
-
-		return this._addIncompatiblePm2(pm2Interface, pm2Interface.pm2.version, pm2Details);
+	
+	if (this._connected) {
+		pm2.disconnect();
+		this._connected = false;
 	}
+};
 
-	this._logger.info("PM2Listener", "Querying version number from", pm2Interface.bind_host);
+PM2Listener.prototype._connect = function() {
+	var self = this;
+	
+	this._logger.info("Connecting to PM2...");
 
-	pm2Interface.rpc.getVersion({}, function(err, version) {
-		pm2Interface.pm2 = {
-			version: version,
-      compatible: true
-		};
-
-		if(!semver.gte(version, this._config.get("requiredPm2Version"))) {
-			pm2Interface.pm2.compatible = false;
-
-			return this._addIncompatiblePm2(pm2Interface);
+	pm2.connect(function(err) {
+		if (err) {
+			self._logger.error("Failed to connect to PM2", { error: err.message });
+			
+			// Retry connection after 5 seconds
+			setTimeout(function() {
+				self._connect();
+			}, 5000);
+			return;
 		}
 
-		this._addCompatiblePm2(pm2Interface, version, pm2Details);
-	}.bind(this));
-}
+		self._connected = true;
+		self._logger.info("Connected to PM2");
 
-PM2Listener.prototype._addIncompatiblePm2 = function(pm2Interface, version) {
-	if(version) {
-		this._logger.error("PM2Listener", pm2Interface.bind_host, "is running pm2", version, "which is incompatible with pm2-web", pkg.version, "- please upgrade pm2 to", this._config.get("requiredPm2Version"), "or higher.");
-	} else {
-		this._logger.error("PM2Listener", "The version of pm2 running on", pm2Interface.bind_host, "is incompatible with pm2-web", pkg.version, "- please upgrade pm2 to", this._config.get("requiredPm2Version"), "or higher.");
+		// Get PM2 version
+		self._checkVersion();
+
+		// Start polling for system data
+		self._startPolling();
+
+		// Setup PM2 event bus for logs
+		self._setupEventBus();
+	});
+};
+
+PM2Listener.prototype._checkVersion = function() {
+	var self = this;
+	
+	// PM2 version check using pm2.Client or fallback
+	try {
+		var pm2Pkg = require('pm2/package.json');
+		var version = pm2Pkg.version;
+		
+		self._pm2Version = version;
+		self._pm2Compatible = semver.gte(version, self._config.get("requiredPm2Version"));
+		
+		if (!self._pm2Compatible) {
+			self._logger.warn("PM2 version " + version + " may not be fully compatible with pm2-web " + pkg.version);
+		} else {
+			self._logger.info("PM2 version: " + version);
+		}
+	} catch (e) {
+		self._logger.warn("Could not determine PM2 version");
+		self._pm2Version = "unknown";
+		self._pm2Compatible = true;
 	}
+};
 
-	this._pm2List[pm2Interface.bind_host] = pm2Interface;
+PM2Listener.prototype._startPolling = function() {
+	var self = this;
+	var updateFrequency = this._config.get("updateFrequency") || 5000;
 
-  this.emit("systemData", {
-    name: pm2Interface.bind_host,
-    pm2: pm2Interface.pm2,
-    system: {
-      hostname: pm2Interface.bind_host,
-      load: [],
-      memory: {
-        free: 0,
-        total: 0
-      }
-    },
-    pm2: pm2Interface.pm2,
-    processes: []
-  });
-}
+	// Initial fetch
+	this._getSystemData();
 
-PM2Listener.prototype._addCompatiblePm2 = function(pm2Interface, version, pm2Details) {
-	this._logger.info("PM2Listener", pm2Interface.bind_host, "is running pm2", version);
+	// Setup interval for polling
+	this._intervalId = setInterval(function() {
+		self._getSystemData();
+	}, updateFrequency);
+};
 
-	// listen for all events
-	pm2Interface.bus.on("*", function(event, data) {
-		data.name = pm2Interface.bind_host;
-		this.emit(event, data);
-	}.bind(this));
+PM2Listener.prototype._getSystemData = function() {
+	var self = this;
 
-	var getSystemData = function() {
-		pm2Interface.rpc.getSystemData({}, function(error, data) {
-			if(error) {
-				this._logger.warn("PM2Listener", "Error retrieving system data", error.message);
-			} else {
-				// only expose fields we are interested in
-				var systemData = this._mapSystemData(pm2Interface, data, pm2Details);
+	pm2.list(function(err, processList) {
+		if (err) {
+			self._logger.warn("Error retrieving PM2 process list", { error: err.message });
+			return;
+		}
 
-				this.emit("systemData", systemData);
-			}
+		var systemData = self._mapSystemData(processList);
+		self.emit("systemData", systemData);
+	});
+};
 
-			setTimeout(getSystemData, this._config.get("updateFrequency"));
-		}.bind(this));
-	}.bind(this);
-	getSystemData();
-
-	this._pm2List[pm2Interface.bind_host] = pm2Interface;
-}
-
-PM2Listener.prototype._mapSystemData = function(pm2Interface, data, pm2Details) {
-	// support for pm2 < 0.7.2
-	if(!data.system.time) {
-		data.system.time = Date.now();
-	}
-
+PM2Listener.prototype._mapSystemData = function(processList) {
+	var now = Date.now();
+	var cpus = os.cpus();
+	var loadavg = os.loadavg();
+	
 	var systemData = {
-		name: pm2Interface.bind_host,
-		inspector: pm2Details.inspector,
+		name: "localhost",
+		inspector: this._config.get("pm2:0:inspector"),
 		system: {
-			hostname: data.system.hostname,
-			cpu_count: data.system.cpus.length,
-			load: [
-				data.system.load[0],
-				data.system.load[1],
-				data.system.load[2]
-			],
-			uptime: data.system.uptime,
+			hostname: os.hostname(),
+			cpu_count: cpus.length,
+			load: [loadavg[0], loadavg[1], loadavg[2]],
+			uptime: os.uptime(),
 			memory: {
-				free: data.system.memory.free,
-				total: data.system.memory.total
+				free: os.freemem(),
+				total: os.totalmem()
 			},
-			time: data.system.time
+			time: now
 		},
-		pm2: pm2Interface.pm2,
+		pm2: {
+			version: this._pm2Version,
+			compatible: this._pm2Compatible
+		},
 		processes: []
 	};
 
 	var reloading = [];
 
-	data.processes.forEach(function(process) {
-		if((typeof process.pm_id == "string" || process.pm_id instanceof String) && process.pm_id.substring(0, 8) == "todelete") {
-			// process has been reloaded - this is the old process that will be killed
-			// so record that it's reloading but do not create a duplicate process for it.
-			reloading.push(parseInt(process.pm_id.substring(8), 10));
+	processList.forEach(function(proc) {
+		if (!proc || !proc.pm2_env) return;
 
+		var pm_id = proc.pm_id;
+		
+		// Check for processes being reloaded
+		if ((typeof pm_id === "string" || pm_id instanceof String) && pm_id.substring(0, 8) === "todelete") {
+			reloading.push(parseInt(pm_id.substring(8), 10));
 			return;
 		}
 
-		if(process.pm2_env.status != "online" && process.pm2_env.status != "stopped" && process.pm2_env.status != "errored" && process.pm2_env.status != "launching" && process.pm2_env.status != "stopping") {
-			this._logger.warn("Unknown status!", process.pm2_env.status);
+		var pm2_env = proc.pm2_env;
+		var monit = proc.monit || { memory: 0, cpu: 0 };
+
+		// Handle various status values
+		var status = pm2_env.status;
+		if (!status) {
+			status = pm2_env.pm2_env_status || "unknown";
+		}
+
+		// Get execution mode
+		var mode = "fork";
+		if (pm2_env.exec_mode) {
+			var modeStr = pm2_env.exec_mode.toString();
+			var underscoreIdx = modeStr.indexOf("_");
+			mode = underscoreIdx > 0 ? modeStr.substring(0, underscoreIdx) : modeStr;
+		}
+
+		// Calculate uptime
+		var uptime = 0;
+		if (pm2_env.pm_uptime) {
+			uptime = (now - pm2_env.pm_uptime) / 1000;
 		}
 
 		systemData.processes.push({
-			id: process.pm_id,
-			pid: process.pid,
-			name: process.pm2_env.name,
-			script: process.pm2_env.pm_exec_path,
-			uptime: (data.system.time - process.pm2_env.pm_uptime) / 1000,
-			restarts: process.pm2_env.restart_time,
-			status: process.pm2_env.status,
-			memory: process.monit.memory,
-			cpu: process.monit.cpu,
-      mode: process.pm2_env.exec_mode.substring(0, process.pm2_env.exec_mode.indexOf("_")),
-			debugPort: this._findDebugPort(process.pm2_env.nodeArgs)
+			id: proc.pm_id,
+			pid: proc.pid,
+			name: pm2_env.name,
+			script: pm2_env.pm_exec_path,
+			uptime: uptime,
+			restarts: pm2_env.restart_time || 0,
+			status: status,
+			memory: monit.memory,
+			cpu: monit.cpu,
+			mode: mode,
+			debugPort: this._findDebugPort(pm2_env.node_args || pm2_env.nodeArgs)
 		});
 	}.bind(this));
 
-	// mark processes that are reloading as such
+	// Mark processes that are reloading as such
 	systemData.processes.forEach(function(process) {
-		process.reloading = reloading.indexOf(process.id) != -1;
+		process.reloading = reloading.indexOf(process.id) !== -1;
 	});
 
 	return systemData;
-}
+};
 
-PM2Listener.prototype._pm2RPCSocketClosed = function(pm2Interface) {
-	this._logger.info("PM2Listener", pm2Interface.bind_host, "RPC socket closed");
+PM2Listener.prototype._setupEventBus = function() {
+	var self = this;
 
-	delete this._pm2List[pm2Interface.bind_host];
-}
+	pm2.launchBus(function(err, bus) {
+		if (err) {
+			self._logger.warn("Could not launch PM2 event bus", { error: err.message });
+			return;
+		}
 
-PM2Listener.prototype._pm2EventSocketClosed = function(pm2Interface) {
-	this._logger.info("PM2Listener", pm2Interface.bind_host, "event socket close");
-}
+		self._logger.info("PM2 event bus connected");
 
-PM2Listener.prototype._pm2EventSocketReconnecting = function(pm2Interface) {
-	this._logger.info("PM2Listener", pm2Interface.bind_host, "event socket reconnecting");
-}
+		// Listen for log events
+		bus.on('log:out', function(data) {
+			self.emit('log:out', {
+				name: 'localhost',
+				process: { pm_id: data.process.pm_id },
+				data: data.data
+			});
+		});
 
-PM2Listener.prototype.stopProcess = function(host, pm_id) {
-	this._doByProcessId(host, pm_id, "stopProcessId");
-}
+		bus.on('log:err', function(data) {
+			self.emit('log:err', {
+				name: 'localhost',
+				process: { pm_id: data.process.pm_id },
+				data: data.data
+			});
+		});
 
-PM2Listener.prototype.startProcess = function(host, pm_id) {
-	this._doByProcessId(host, pm_id, "startProcessId");
-}
+		// Listen for process events
+		bus.on('process:exception', function(data) {
+			self.emit('process:exception', {
+				name: 'localhost',
+				process: data.process,
+				data: data.data,
+				err: data.err
+			});
+		});
 
-PM2Listener.prototype.restartProcess = function(host, pm_id) {
-	this._doByProcessId(host, pm_id, "restartProcessId");
-}
-
-PM2Listener.prototype.reloadProcess = function(host, pm_id) {
-	if(this._config.get("forceHardReload")) {
-		this._doByProcessId(host, pm_id, "reloadProcessId");
-	} else {
-		this._doByProcessId(host, pm_id, "softReloadProcessId");
-	}
-}
-
-PM2Listener.prototype.debugProcess = function(host, pm_id) {
-	// put the remot process into debug mode
-	this._pm2List[host].rpc.sendSignalToProcessId({
-		process_id: pm_id,
-		signal: "SIGUSR1"
-	}, function(error) {
-
+		bus.on('process:event', function(data) {
+			self._logger.info("Process event", { event: data.event, name: data.process ? data.process.name : 'unknown' });
+		});
 	});
 };
 
-PM2Listener.prototype._doByProcessId = function(host, pm_id, action) {
-	if(!this._pm2List[host]) {
-		return this._logger.info("PM2Listener", "Invalid host", host, "not in", Object.keys(this._pm2List));
-	}
-
-	this._logger.info("PM2Listener", host, pm_id, action);
-	this._pm2List[host].rpc[action](pm_id, function(error) {
-
+PM2Listener.prototype.stopProcess = function(host, pm_id) {
+	var self = this;
+	this._logger.info("Stopping process", { pm_id: pm_id });
+	
+	pm2.stop(pm_id, function(err) {
+		if (err) {
+			self._logger.error("Error stopping process", { pm_id: pm_id, error: err.message });
+		}
 	});
-}
+};
+
+PM2Listener.prototype.startProcess = function(host, pm_id) {
+	var self = this;
+	this._logger.info("Starting process", { pm_id: pm_id });
+	
+	// PM2's restart also works for starting stopped processes
+	pm2.restart(pm_id, function(err) {
+		if (err) {
+			self._logger.error("Error starting process", { pm_id: pm_id, error: err.message });
+		}
+	});
+};
+
+PM2Listener.prototype.restartProcess = function(host, pm_id) {
+	var self = this;
+	this._logger.info("Restarting process", { pm_id: pm_id });
+	
+	pm2.restart(pm_id, function(err) {
+		if (err) {
+			self._logger.error("Error restarting process", { pm_id: pm_id, error: err.message });
+		}
+	});
+};
+
+PM2Listener.prototype.reloadProcess = function(host, pm_id) {
+	var self = this;
+	this._logger.info("Reloading process", { pm_id: pm_id });
+	
+	pm2.reload(pm_id, function(err) {
+		if (err) {
+			self._logger.error("Error reloading process", { pm_id: pm_id, error: err.message });
+		}
+	});
+};
+
+PM2Listener.prototype.debugProcess = function(host, pm_id) {
+	var self = this;
+	this._logger.info("Sending debug signal to process", { pm_id: pm_id });
+	
+	pm2.sendSignalToProcessId('SIGUSR1', pm_id, function(err) {
+		if (err) {
+			self._logger.error("Error sending debug signal", { pm_id: pm_id, error: err.message });
+		}
+	});
+};
 
 PM2Listener.prototype._findDebugPort = function(execArgv) {
 	var port = DEFAULT_DEBUG_PORT;
 
-	if(Array.isArray(execArgv)) {
+	if (Array.isArray(execArgv)) {
 		execArgv.forEach(function(argument) {
-			[/--debug\s*=?\s*([0-9]+)/, /--debug-brk\s*=?\s*([0-9]+)/].forEach(function(regex) {
+			if (!argument) return;
+			
+			[/--debug\s*=?\s*([0-9]+)/, /--debug-brk\s*=?\s*([0-9]+)/, /--inspect\s*=?\s*([0-9]+)/, /--inspect-brk\s*=?\s*([0-9]+)/].forEach(function(regex) {
 				var matches = argument.match(regex);
 
-				if(matches && matches.length > 1) {
+				if (matches && matches.length > 1) {
 					port = parseInt(matches[1], 10);
 				}
 			});
@@ -268,6 +318,6 @@ PM2Listener.prototype._findDebugPort = function(execArgv) {
 	}
 
 	return port;
-}
+};
 
 module.exports = PM2Listener;
