@@ -31,6 +31,23 @@ HostData.prototype.update = function(data) {
 		total: data.system.memory.total,
 		used: data.system.memory.total - data.system.memory.free
 	};
+	
+	// 更新网络数据
+	if (data.system.network) {
+		this.system.network = {
+			rx_bytes: data.system.network.rx_bytes || 0,
+			tx_bytes: data.system.network.tx_bytes || 0,
+			rx_speed: data.system.network.rx_speed || 0,
+			tx_speed: data.system.network.tx_speed || 0,
+			interfaces: data.system.network.interfaces || []
+		};
+		
+		// 存储历史网络速度数据
+		if (!this.system.networkHistory) {
+			this.system.networkHistory = { rx: [], tx: [] };
+		}
+		this._appendNetworkHistory(data.system.network.rx_speed, data.system.network.tx_speed, data.system.time);
+	}
 
 	this._removeMissingProcesses(data.processes);
 
@@ -44,6 +61,25 @@ HostData.prototype.update = function(data) {
 
 		existingProcess.update(reportedProcess, data.system);
 	}.bind(this));
+};
+
+HostData.prototype._appendNetworkHistory = function(rx_speed, tx_speed, time) {
+	var maxDatapoints = this._config.get("graph:datapoints") || 1000;
+	
+	// 转换为 KB/s
+	var rxKBs = (rx_speed || 0) / 1024;
+	var txKBs = (tx_speed || 0) / 1024;
+	
+	this.system.networkHistory.rx.push({ x: time, y: rxKBs });
+	this.system.networkHistory.tx.push({ x: time, y: txKBs });
+	
+	// 限制数据点数量
+	if (this.system.networkHistory.rx.length > maxDatapoints) {
+		this.system.networkHistory.rx = this.system.networkHistory.rx.slice(-maxDatapoints);
+	}
+	if (this.system.networkHistory.tx.length > maxDatapoints) {
+		this.system.networkHistory.tx = this.system.networkHistory.tx.slice(-maxDatapoints);
+	}
 };
 
 HostData.prototype._removeMissingProcesses = function(reportedProcesses) {
@@ -82,7 +118,9 @@ var ProcessData = function(config, data) {
 
 	this.usage = {
 		cpu: data.usage ? data.usage.cpu : [],
-		memory: data.usage ? data.usage.memory : []
+		memory: data.usage ? data.usage.memory : [],
+		io_read: data.usage ? data.usage.io_read : [],
+		io_write: data.usage ? data.usage.io_write : []
 	};
 
 	this.logs = [];
@@ -100,6 +138,11 @@ ProcessData.prototype.update = function(data, system) {
 	this._map(data);
 
 	this._append((data.memory / system.memory.total) * 100, data.cpu, system.time);
+	
+	// 更新 I/O 速度数据
+	if (data.io) {
+		this._appendIO(data.io.read_speed, data.io.write_speed, system.time);
+	}
 }
 
 ProcessData.prototype.log = function(type, data) {
@@ -122,6 +165,18 @@ ProcessData.prototype._map = function(data) {
 	["id", "pid", "name", "script", "uptime", "restarts", "status", "memory", "cpu", "reloading", "debugPort", "mode"].forEach(function(key) {
 		this[key] = data[key];
 	}.bind(this));
+	
+	// 映射 I/O 数据
+	if (data.io) {
+		this.io = {
+			read_bytes: data.io.read_bytes || 0,
+			write_bytes: data.io.write_bytes || 0,
+			read_speed: data.io.read_speed || 0,
+			write_speed: data.io.write_speed || 0
+		};
+	} else {
+		this.io = { read_bytes: 0, write_bytes: 0, read_speed: 0, write_speed: 0 };
+	}
 }
 
 ProcessData.prototype._append = function(memory, cpu, time) {
@@ -130,6 +185,19 @@ ProcessData.prototype._append = function(memory, cpu, time) {
 
 	this._appendIfDifferent(this.usage.memory, memory, time);
 	this._appendIfDifferent(this.usage.cpu, cpu, time);
+}
+
+ProcessData.prototype._appendIO = function(read_speed, write_speed, time) {
+	// 压缩历史数据
+	this.usage.io_read = this._compressResourceUsage(this.usage.io_read, time);
+	this.usage.io_write = this._compressResourceUsage(this.usage.io_write, time);
+	
+	// I/O 速度转换为 KB/s 存储，便于图表展示
+	var readKBs = (read_speed || 0) / 1024;
+	var writeKBs = (write_speed || 0) / 1024;
+	
+	this._appendIfDifferent(this.usage.io_read, readKBs, time);
+	this._appendIfDifferent(this.usage.io_write, writeKBs, time);
 }
 
 ProcessData.prototype._appendIfDifferent = function(array, value, time) {
@@ -10240,16 +10308,89 @@ module.exports = ["config", function(config) {
 				]
 			};
 
+			// 检查是否有 I/O 数据
+			var hasIOData = $scope.data.io_read && $scope.data.io_write;
+			
+			// 配置 Y 轴
+			var yAxisConfig = [{
+				title: {
+					text: null
+				},
+				labels: {
+					format: "{value}%"
+				},
+				min: 0,
+				max: 100,
+				gridLineColor: "#EEEEEE"
+			}];
+			
+			// 如果有 I/O 数据，添加第二个 Y 轴
+			if (hasIOData) {
+				yAxisConfig.push({
+					title: {
+						text: null
+					},
+					labels: {
+						format: "{value} KB/s",
+						style: {
+							color: "#06b6d4"
+						}
+					},
+					min: 0,
+					gridLineColor: "#EEEEEE",
+					opposite: true
+				});
+			}
+			
+			// 基础系列配置
+			var seriesConfig = [{
+				name: "CPU",
+				color: "#3b82f6",
+				data: $scope.data.cpu,
+				yAxis: 0
+			}, {
+				name: "内存",
+				color: "#22c55e",
+				data: $scope.data.memory,
+				yAxis: 0
+			}];
+			
+			// 添加 I/O 系列
+			if (hasIOData) {
+				seriesConfig.push({
+					name: "读取 I/O",
+					color: "#06b6d4",
+					data: $scope.data.io_read,
+					yAxis: 1,
+					dashStyle: "ShortDash"
+				});
+				seriesConfig.push({
+					name: "写入 I/O",
+					color: "#a855f7",
+					data: $scope.data.io_write,
+					yAxis: 1,
+					dashStyle: "ShortDash"
+				});
+			}
+
 			var chart = new Highcharts.Chart({
 				chart: {
 					type: "areaspline",
-					renderTo: $element[0]
+					renderTo: $element[0],
+					backgroundColor: "transparent"
 				},
 				title: {
 					text: null
 				},
 				legend: {
-					enabled: false
+					enabled: hasIOData,
+					align: "right",
+					verticalAlign: "top",
+					floating: true,
+					itemStyle: {
+						color: "#64748b",
+						fontSize: "11px"
+					}
 				},
 				credits: {
 					enabled: false
@@ -10261,62 +10402,67 @@ module.exports = ["config", function(config) {
 					type: "datetime",
 					labels: {
 						overflow: "justify",
-						y: 25
+						y: 25,
+						style: {
+							color: "#64748b"
+						}
 					},
-					gridLineColor: "#EEEEEE",
-					gridLineWidth: 1
+					gridLineColor: "#334155",
+					gridLineWidth: 1,
+					lineColor: "#334155"
 				},
-				yAxis: {
-					title: {
-						text: null
-					},
-					labels: {
-						format: "{value}%"
-					},
-					min: 0,
-					max: 100,
-					gridLineColor: "#EEEEEE"
-				},
+				yAxis: yAxisConfig,
 				tooltip: {
-					valueSuffix: " %",
-					// disabled until data interpolation is added
-					enabled: false
+					shared: true,
+					useHTML: true,
+					backgroundColor: "rgba(30, 41, 59, 0.95)",
+					borderColor: "#334155",
+					style: {
+						color: "#f1f5f9"
+					},
+					formatter: function() {
+						var s = "<b>" + Highcharts.dateFormat("%Y-%m-%d %H:%M:%S", this.x) + "</b><br/>";
+						this.points.forEach(function(point) {
+							var suffix = point.series.yAxis.options.index === 0 ? "%" : " KB/s";
+							s += '<span style="color:' + point.series.color + '">\u25CF</span> ' + 
+								point.series.name + ": <b>" + point.y.toFixed(2) + suffix + "</b><br/>";
+						});
+						return s;
+					}
 				},
 				plotOptions: {
 					areaspline: {
-						lineWidth: 4,
+						lineWidth: 2,
 						states: {
 							hover: {
-								lineWidth: 5
+								lineWidth: 3
 							}
 						},
-						// disabled markers until data interpolation is supported
 						marker: {
 							enabled: false,
 							states: {
 								hover: {
-									enabled: false
+									enabled: true,
+									radius: 4
 								}
 							}
 						},
 						fillOpacity: 0.1
 					}
 				},
-				series: [{
-					name: "CPU",
-					color: "#347FAC",
-					data: $scope.data.cpu
-				}, {
-					name: "Memory",
-					color: "#49AA3C",
-					data: $scope.data.memory
-				}]
+				series: seriesConfig
 			});
 
 			// much simpler than $scope.$watchCollection
 			setInterval(function() {
-				chart.series[1].setData($scope.data.memory, true);
 				chart.series[0].setData($scope.data.cpu, true);
+				chart.series[1].setData($scope.data.memory, true);
+				
+				// 更新 I/O 数据
+				if (hasIOData && chart.series.length >= 4) {
+					chart.series[2].setData($scope.data.io_read || [], true);
+					chart.series[3].setData($scope.data.io_write || [], true);
+				}
 			}, config.get("updateFrequency"));
 		}
 	};
@@ -10381,6 +10527,34 @@ module.exports = ["$sce", function($sce) {
 
 },{"ansi-html":3,"html-entities":39}],78:[function(require,module,exports){
 
+/**
+ * 带宽速度格式化过滤器
+ * 将字节/秒转换为人类可读的格式
+ */
+module.exports = function() {
+	var sizes = ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"];
+
+	return function(bytesPerSecond) {
+		if(!bytesPerSecond && bytesPerSecond !== 0) {
+			return "0 B/s";
+		}
+		
+		bytesPerSecond = Math.abs(bytesPerSecond);
+
+		for(var i = sizes.length - 1; i > 0; i--) {
+			var step = Math.pow(1024, i);
+
+			if (bytesPerSecond >= step) {
+				return (bytesPerSecond / step).toFixed(2) + " " + sizes[i];
+			}
+		}
+
+		return bytesPerSecond.toFixed(0) + " " + sizes[0];
+	}
+};
+
+},{}],79:[function(require,module,exports){
+
 module.exports = function() {
 	return function(number, decimalPlaces) {
 		if(!number && number !== 0) {
@@ -10391,7 +10565,7 @@ module.exports = function() {
 	}
 };
 
-},{}],79:[function(require,module,exports){
+},{}],80:[function(require,module,exports){
 var Moment = require("moment");
 
 // 设置中文 locale
@@ -10420,7 +10594,7 @@ module.exports = function() {
 	}
 };
 
-},{"moment":57}],80:[function(require,module,exports){
+},{"moment":57}],81:[function(require,module,exports){
 
 module.exports = function() {
 	var sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
@@ -10442,7 +10616,7 @@ module.exports = function() {
 	}
 };
 
-},{}],81:[function(require,module,exports){
+},{}],82:[function(require,module,exports){
 "use strict";
 
 var WebSocketResponder = require("./components/WebSocketResponder"),
@@ -10475,6 +10649,7 @@ pm2Web.directive("scrollglue", require("./directives/scrollGlue"));
 pm2Web.filter("decimalPlaces", require("./filters/decimalPlaces"));
 pm2Web.filter("humanise", require("./filters/humanise"));
 pm2Web.filter("memory", require("./filters/memory"));
+pm2Web.filter("bandwidth", require("./filters/bandwidth"));
 pm2Web.filter("ansiToHtml", require("./filters/ansiToHtml"));
 
 // controllers
@@ -10484,7 +10659,7 @@ pm2Web.controller("ProcessListController", require("./controllers/processList"))
 pm2Web.controller("HostListController", require("./controllers/hostList"));
 pm2Web.controller("FooterController", require("./controllers/footer"));
 
-},{"./components/Config":67,"./components/UIHostList":68,"./components/WebSocketResponder":69,"./controllers/connection":70,"./controllers/footer":71,"./controllers/hostList":72,"./controllers/processList":73,"./controllers/system":74,"./directives/resourceUsage":75,"./directives/scrollGlue":76,"./filters/ansiToHtml":77,"./filters/decimalPlaces":78,"./filters/humanise":79,"./filters/memory":80,"./routes":82}],82:[function(require,module,exports){
+},{"./components/Config":67,"./components/UIHostList":68,"./components/WebSocketResponder":69,"./controllers/connection":70,"./controllers/footer":71,"./controllers/hostList":72,"./controllers/processList":73,"./controllers/system":74,"./directives/resourceUsage":75,"./directives/scrollGlue":76,"./filters/ansiToHtml":77,"./filters/bandwidth":78,"./filters/decimalPlaces":79,"./filters/humanise":80,"./filters/memory":81,"./routes":83}],83:[function(require,module,exports){
 
 module.exports = ["$routeProvider",
 	function($routeProvider) {
@@ -10499,4 +10674,4 @@ module.exports = ["$routeProvider",
 	}
 ];
 
-},{}]},{},[81]);
+},{}]},{},[82]);

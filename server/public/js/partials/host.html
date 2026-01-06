@@ -35,6 +35,31 @@
 		<figcaption>内存 (共 {{hostData.system.memory.total | memory}})</figcaption>
 		<div class="memory-bar"><div class="free" style="width: {{(hostData.system.memory.free / hostData.system.memory.total) * 100}}%">{{hostData.system.memory.free | memory}} 空闲</div><div class="used" style="width: {{100 - ((hostData.system.memory.free / hostData.system.memory.total) * 100)}}%">{{hostData.system.memory.used | memory}} 已用</div></div>
 	</figure>
+	<figure id="network" ng-show="hostData.pm2.compatible && hostData.system.network">
+		<figcaption>网络带宽</figcaption>
+		<div class="network-stats">
+			<div class="network-stat download">
+				<i class="icon-download-alt"></i>
+				<span class="network-label">下载</span>
+				<span class="network-value">{{hostData.system.network.rx_speed | bandwidth}}</span>
+			</div>
+			<div class="network-stat upload">
+				<i class="icon-upload-alt"></i>
+				<span class="network-label">上传</span>
+				<span class="network-value">{{hostData.system.network.tx_speed | bandwidth}}</span>
+			</div>
+			<div class="network-stat total-rx">
+				<i class="icon-cloud-download"></i>
+				<span class="network-label">总下载</span>
+				<span class="network-value">{{hostData.system.network.rx_bytes | memory}}</span>
+			</div>
+			<div class="network-stat total-tx">
+				<i class="icon-cloud-upload"></i>
+				<span class="network-label">总上传</span>
+				<span class="network-value">{{hostData.system.network.tx_bytes | memory}}</span>
+			</div>
+		</div>
+	</figure>
 </section>
 <section class="processes" ng-controller="ProcessListController" ng-show={{hostData.pm2.compatible}}>
 	<h2>进程列表</h2>
@@ -76,6 +101,13 @@
 				<h3>内存</h3>
 				<p ng-click="toggleDetails(process.id)">{{process.memory | memory}}</p>
 			</li>
+			<li class="io" ng-show="process.io && (process.io.read_speed > 0 || process.io.write_speed > 0)">
+				<h3>I/O</h3>
+				<p ng-click="toggleDetails(process.id)" class="io-stats">
+					<span class="io-read" title="读取速度"><i class="icon-download-alt"></i>{{process.io.read_speed | bandwidth}}</span>
+					<span class="io-write" title="写入速度"><i class="icon-upload-alt"></i>{{process.io.write_speed | bandwidth}}</span>
+				</p>
+			</li>
 			<li class="actions">
 				<h3>操作</h3>
 				<p ng-click="toggleDetails(process.id)">
@@ -97,6 +129,10 @@
 				<dd>CPU</dd>
 				<dt class="memory">内存</dt>
 				<dd>内存</dd>
+				<dt class="io-read" ng-show="process.io && process.io.read_speed > 0">读取</dt>
+				<dd ng-show="process.io && process.io.read_speed > 0">读取 I/O</dd>
+				<dt class="io-write" ng-show="process.io && process.io.write_speed > 0">写入</dt>
+				<dd ng-show="process.io && process.io.write_speed > 0">写入 I/O</dd>
 			</dl>
 			<figure resourceusage data="process.usage" style="display: block; width: 100%; height: 300px; margin: 10px 0 30px 0"></figure>
 			<h3>实时日志</h3>

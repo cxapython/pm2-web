@@ -30,6 +30,7 @@ pm2Web.directive("scrollglue", require("./directives/scrollGlue"));
 pm2Web.filter("decimalPlaces", require("./filters/decimalPlaces"));
 pm2Web.filter("humanise", require("./filters/humanise"));
 pm2Web.filter("memory", require("./filters/memory"));
+pm2Web.filter("bandwidth", require("./filters/bandwidth"));
 pm2Web.filter("ansiToHtml", require("./filters/ansiToHtml"));
 
 // controllers

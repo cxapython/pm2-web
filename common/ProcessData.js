@@ -10,7 +10,9 @@ var ProcessData = function(config, data) {
 
 	this.usage = {
 		cpu: data.usage ? data.usage.cpu : [],
-		memory: data.usage ? data.usage.memory : []
+		memory: data.usage ? data.usage.memory : [],
+		io_read: data.usage ? data.usage.io_read : [],
+		io_write: data.usage ? data.usage.io_write : []
 	};
 
 	this.logs = [];
@@ -28,6 +30,11 @@ ProcessData.prototype.update = function(data, system) {
 	this._map(data);
 
 	this._append((data.memory / system.memory.total) * 100, data.cpu, system.time);
+	
+	// 更新 I/O 速度数据
+	if (data.io) {
+		this._appendIO(data.io.read_speed, data.io.write_speed, system.time);
+	}
 }
 
 ProcessData.prototype.log = function(type, data) {
@@ -50,6 +57,18 @@ ProcessData.prototype._map = function(data) {
 	["id", "pid", "name", "script", "uptime", "restarts", "status", "memory", "cpu", "reloading", "debugPort", "mode"].forEach(function(key) {
 		this[key] = data[key];
 	}.bind(this));
+	
+	// 映射 I/O 数据
+	if (data.io) {
+		this.io = {
+			read_bytes: data.io.read_bytes || 0,
+			write_bytes: data.io.write_bytes || 0,
+			read_speed: data.io.read_speed || 0,
+			write_speed: data.io.write_speed || 0
+		};
+	} else {
+		this.io = { read_bytes: 0, write_bytes: 0, read_speed: 0, write_speed: 0 };
+	}
 }
 
 ProcessData.prototype._append = function(memory, cpu, time) {
@@ -58,6 +77,19 @@ ProcessData.prototype._append = function(memory, cpu, time) {
 
 	this._appendIfDifferent(this.usage.memory, memory, time);
 	this._appendIfDifferent(this.usage.cpu, cpu, time);
+}
+
+ProcessData.prototype._appendIO = function(read_speed, write_speed, time) {
+	// 压缩历史数据
+	this.usage.io_read = this._compressResourceUsage(this.usage.io_read, time);
+	this.usage.io_write = this._compressResourceUsage(this.usage.io_write, time);
+	
+	// I/O 速度转换为 KB/s 存储，便于图表展示
+	var readKBs = (read_speed || 0) / 1024;
+	var writeKBs = (write_speed || 0) / 1024;
+	
+	this._appendIfDifferent(this.usage.io_read, readKBs, time);
+	this._appendIfDifferent(this.usage.io_write, writeKBs, time);
 }
 
 ProcessData.prototype._appendIfDifferent = function(array, value, time) {

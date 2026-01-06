@@ -1213,3 +1213,149 @@ section h2::before {
     display: none;
   }
 }
+
+/* ========================================
+   网络带宽监控样式
+   ======================================== */
+
+/* 系统网络统计 */
+.system figure#network {
+  display: block;
+  grid-column: span 2;
+}
+
+.system figure#network figcaption {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+}
+
+.network-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.network-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+
+.network-stat:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+.network-stat i {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.network-stat.download i {
+  color: var(--accent-green);
+}
+
+.network-stat.upload i {
+  color: var(--accent-blue);
+}
+
+.network-stat.total-rx i {
+  color: var(--accent-cyan);
+}
+
+.network-stat.total-tx i {
+  color: var(--accent-purple);
+}
+
+.network-stat .network-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.network-stat .network-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+/* 进程 I/O 列 */
+.processes .information .io {
+  width: 140px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.processes .information .io p {
+  text-align: center;
+}
+
+.processes .information .io p.io-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.processes .information .io .io-read,
+.processes .information .io .io-write {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.processes .information .io .io-read i {
+  color: var(--accent-green);
+  font-size: 11px;
+}
+
+.processes .information .io .io-write i {
+  color: var(--accent-blue);
+  font-size: 11px;
+}
+
+/* 资源使用图表图例 - 添加 I/O 图例 */
+.processes .details dl dt.io-read {
+  background: var(--accent-cyan);
+}
+
+.processes .details dl dt.io-write {
+  background: var(--accent-purple);
+}
+
+/* 响应式调整 */
+@media only screen and (max-width: 1100px) {
+  .network-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media only screen and (max-width: 600px) {
+  .network-stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .processes .information .io {
+    width: 100%;
+  }
+  
+  .processes .information .io p.io-stats {
+    flex-direction: row;
+    justify-content: center;
+    gap: 16px;
+  }
+}

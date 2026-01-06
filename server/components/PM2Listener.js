@@ -7,7 +7,8 @@ var Autowire = require("wantsit").Autowire,
 	fs = require("fs"),
 	path = require("path"),
 	{ execSync } = require("child_process"),
-	pkg = require(__dirname + "/../../package.json");
+	pkg = require(__dirname + "/../../package.json"),
+	NetworkMonitor = require("./NetworkMonitor");
 
 var DEFAULT_DEBUG_PORT = 5858;
 var DEFAULT_HISTORY_LINES = 100; // 默认读取最后100行历史日志
@@ -116,6 +117,7 @@ var PM2Listener = function() {
 	this._intervalId = null;
 	this._processLogPaths = {}; // 存储进程日志路径
 	this._loadedHistoryLogs = {}; // 跟踪已加载过历史日志的进程
+	this._networkMonitor = new NetworkMonitor(); // 网络监控实例
 };
 util.inherits(PM2Listener, EventEmitter);
 
@@ -286,6 +288,10 @@ PM2Listener.prototype._mapSystemData = function(processList) {
 	var now = Date.now();
 	var cpus = os.cpus();
 	var loadavg = os.loadavg();
+	var self = this;
+	
+	// 获取系统网络统计
+	var networkStats = this._networkMonitor.getSystemNetworkStats();
 	
 	var systemData = {
 		name: "localhost",
@@ -296,7 +302,14 @@ PM2Listener.prototype._mapSystemData = function(processList) {
 			load: [loadavg[0], loadavg[1], loadavg[2]],
 			uptime: os.uptime(),
 			memory: getAvailableMemory(),
-			time: now
+			time: now,
+			network: {
+				rx_bytes: networkStats.total.rx_bytes,
+				tx_bytes: networkStats.total.tx_bytes,
+				rx_speed: networkStats.total.rx_speed,
+				tx_speed: networkStats.total.tx_speed,
+				interfaces: networkStats.interfaces
+			}
 		},
 		pm2: {
 			version: this._pm2Version,
@@ -306,6 +319,7 @@ PM2Listener.prototype._mapSystemData = function(processList) {
 	};
 
 	var reloading = [];
+	var activePids = [];
 
 	processList.forEach(function(proc) {
 		if (!proc || !proc.pm2_env) return;
@@ -341,6 +355,13 @@ PM2Listener.prototype._mapSystemData = function(processList) {
 			uptime = (now - pm2_env.pm_uptime) / 1000;
 		}
 
+		// 获取进程 I/O 统计
+		var processIO = { read_bytes: 0, write_bytes: 0, read_speed: 0, write_speed: 0 };
+		if (proc.pid && proc.pid > 0) {
+			processIO = self._networkMonitor.getProcessIOStats(proc.pid);
+			activePids.push(proc.pid);
+		}
+
 		systemData.processes.push({
 			id: proc.pm_id,
 			pid: proc.pid,
@@ -352,9 +373,18 @@ PM2Listener.prototype._mapSystemData = function(processList) {
 			memory: monit.memory,
 			cpu: monit.cpu,
 			mode: mode,
-			debugPort: this._findDebugPort(pm2_env.node_args || pm2_env.nodeArgs)
+			debugPort: self._findDebugPort(pm2_env.node_args || pm2_env.nodeArgs),
+			io: {
+				read_bytes: processIO.read_bytes,
+				write_bytes: processIO.write_bytes,
+				read_speed: processIO.read_speed,
+				write_speed: processIO.write_speed
+			}
 		});
-	}.bind(this));
+	});
+
+	// 清理已结束进程的缓存
+	this._networkMonitor.cleanupStaleProcesses(activePids);
 
 	// Mark processes that are reloading as such
 	systemData.processes.forEach(function(process) {

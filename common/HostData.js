@@ -30,6 +30,23 @@ HostData.prototype.update = function(data) {
 		total: data.system.memory.total,
 		used: data.system.memory.total - data.system.memory.free
 	};
+	
+	// 更新网络数据
+	if (data.system.network) {
+		this.system.network = {
+			rx_bytes: data.system.network.rx_bytes || 0,
+			tx_bytes: data.system.network.tx_bytes || 0,
+			rx_speed: data.system.network.rx_speed || 0,
+			tx_speed: data.system.network.tx_speed || 0,
+			interfaces: data.system.network.interfaces || []
+		};
+		
+		// 存储历史网络速度数据
+		if (!this.system.networkHistory) {
+			this.system.networkHistory = { rx: [], tx: [] };
+		}
+		this._appendNetworkHistory(data.system.network.rx_speed, data.system.network.tx_speed, data.system.time);
+	}
 
 	this._removeMissingProcesses(data.processes);
 
@@ -43,6 +60,25 @@ HostData.prototype.update = function(data) {
 
 		existingProcess.update(reportedProcess, data.system);
 	}.bind(this));
+};
+
+HostData.prototype._appendNetworkHistory = function(rx_speed, tx_speed, time) {
+	var maxDatapoints = this._config.get("graph:datapoints") || 1000;
+	
+	// 转换为 KB/s
+	var rxKBs = (rx_speed || 0) / 1024;
+	var txKBs = (tx_speed || 0) / 1024;
+	
+	this.system.networkHistory.rx.push({ x: time, y: rxKBs });
+	this.system.networkHistory.tx.push({ x: time, y: txKBs });
+	
+	// 限制数据点数量
+	if (this.system.networkHistory.rx.length > maxDatapoints) {
+		this.system.networkHistory.rx = this.system.networkHistory.rx.slice(-maxDatapoints);
+	}
+	if (this.system.networkHistory.tx.length > maxDatapoints) {
+		this.system.networkHistory.tx = this.system.networkHistory.tx.slice(-maxDatapoints);
+	}
 };
 
 HostData.prototype._removeMissingProcesses = function(reportedProcesses) {
