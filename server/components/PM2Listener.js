@@ -496,12 +496,75 @@ PM2Listener.prototype.getProcessScript = function(pm_id, callback) {
 		var processInfo = proc[0];
 		var pm2_env = processInfo.pm2_env || {};
 		
+		var scriptPath = pm2_env.pm_exec_path;
+		var cwd = pm2_env.pm_cwd;
+		var interpreter = pm2_env.exec_interpreter || 'node';
+		var args = pm2_env.args || [];
+		
+		// 检查是否是通过 bash -c 执行的命令
+		// 例如: pm2 start "python3 main.py" 会变成 /bin/bash -c "python3 main.py"
+		if ((scriptPath === '/bin/bash' || scriptPath === '/bin/sh') && interpreter === 'none') {
+			var scriptArgs = pm2_env.pm_exec_path_args || pm2_env.args;
+			
+			if (scriptArgs && scriptArgs.length > 0) {
+				// 解析 -c 后面的命令
+				var cmdStr = '';
+				for (var i = 0; i < scriptArgs.length; i++) {
+					if (scriptArgs[i] === '-c' && i + 1 < scriptArgs.length) {
+						cmdStr = scriptArgs[i + 1];
+						break;
+					}
+				}
+				
+				if (!cmdStr && typeof scriptArgs === 'string') {
+					cmdStr = scriptArgs;
+				}
+				
+				if (cmdStr) {
+					// 解析命令中的脚本文件
+					// 例如: "python3 main.py" -> main.py
+					// 例如: "python3 reddit_main.py --arg1 val1" -> reddit_main.py
+					var parts = cmdStr.trim().split(/\s+/);
+					for (var j = 0; j < parts.length; j++) {
+						var part = parts[j];
+						// 查找以 .py, .js, .ts, .sh 等结尾的文件
+						if (/\.(py|js|ts|jsx|tsx|sh|rb|php|pl)$/i.test(part)) {
+							// 如果是相对路径，结合 cwd
+							if (!path.isAbsolute(part)) {
+								scriptPath = path.join(cwd, part);
+							} else {
+								scriptPath = part;
+							}
+							
+							// 从命令中推断解释器
+							if (parts[0].includes('python')) {
+								interpreter = 'python';
+							} else if (parts[0].includes('node')) {
+								interpreter = 'node';
+							} else if (parts[0].includes('ruby')) {
+								interpreter = 'ruby';
+							}
+							break;
+						}
+					}
+				}
+			}
+		}
+		
+		// 验证脚本文件是否存在
+		if (!fs.existsSync(scriptPath)) {
+			self._logger.warn('脚本文件不存在', { path: scriptPath, cwd: cwd });
+			return callback({ 
+				error: '脚本文件不存在: ' + scriptPath + '\n工作目录: ' + cwd + '\n提示: 请确保在正确的目录下启动进程'
+			});
+		}
+		
 		callback({
 			pm_id: pm_id,
 			name: pm2_env.name,
-			script: pm2_env.pm_exec_path,
-			cwd: pm2_env.pm_cwd,
-			interpreter: pm2_env.exec_interpreter || 'node'
+			script: scriptPath,
+			cwd: cwd,
+			interpreter: interpreter
 		});
 	});
 };
