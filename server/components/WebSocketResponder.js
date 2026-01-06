@@ -202,4 +202,84 @@ WebSocketResponder.prototype.debugProcess = function(client, host, pm_id) {
 	this._pm2Listener.debugProcess(host, pm_id);
 };
 
+// 获取进程脚本信息
+WebSocketResponder.prototype.getProcessScript = function(client, host, pm_id) {
+	var self = this;
+	
+	this._pm2Listener.getProcessScript(pm_id, function(result) {
+		try {
+			client.send(JSON.stringify([{
+				method: "onProcessScript",
+				args: [result]
+			}]));
+		} catch (e) {
+			self._logger.warn("发送进程脚本信息失败", { error: e.message });
+		}
+	});
+};
+
+// 读取文件内容
+WebSocketResponder.prototype.readFile = function(client, filePath) {
+	var self = this;
+	
+	this._pm2Listener.readFile(filePath, function(result) {
+		try {
+			client.send(JSON.stringify([{
+				method: "onFileContent",
+				args: [result]
+			}]));
+		} catch (e) {
+			self._logger.warn("发送文件内容失败", { error: e.message });
+		}
+	});
+};
+
+// 保存文件内容
+WebSocketResponder.prototype.saveFile = function(client, filePath, content) {
+	var self = this;
+	
+	this._pm2Listener.saveFile(filePath, content, function(result) {
+		try {
+			client.send(JSON.stringify([{
+				method: "onFileSaved",
+				args: [result]
+			}]));
+		} catch (e) {
+			self._logger.warn("发送保存结果失败", { error: e.message });
+		}
+	});
+};
+
+// 获取文件依赖
+WebSocketResponder.prototype.getFileDependencies = function(client, filePath) {
+	var self = this;
+	
+	this._pm2Listener.getFileDependencies(filePath, function(result) {
+		try {
+			client.send(JSON.stringify([{
+				method: "onFileDependencies",
+				args: [result]
+			}]));
+		} catch (e) {
+			self._logger.warn("发送文件依赖失败", { error: e.message });
+		}
+	});
+};
+
+// 列出目录
+WebSocketResponder.prototype.listDirectory = function(client, dirPath) {
+	var self = this;
+	
+	this._pm2Listener.listDirectory(dirPath, function(result) {
+		try {
+			client.send(JSON.stringify([{
+				method: "onDirectoryList",
+				args: [result]
+			}]));
+		} catch (e) {
+			self._logger.warn("发送目录列表失败", { error: e.message });
+		}
+	});
+};
+
 module.exports = WebSocketResponder;

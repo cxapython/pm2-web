@@ -84,6 +84,7 @@
 					<a class="icon-refresh" title="重启进程" ng-hide="process.status != 'online'" ng-click="restart(process.id, $event)"></a>
 					<a class="icon-repeat" title="重载进程" ng-hide="process.status != 'online'" ng-click="reload(process, $event)" ng-show="process.mode == 'cluster'"></a>
 					<a class="icon-bug" title="调试进程" ng-show="debugEnabled && process.status == 'online'" ng-click="debug(process, $event)"></a>
+					<a class="icon-code" title="编辑代码" ng-click="editCode(process, $event)"></a>
 				</p>
 			</li>
 		</ul>
@@ -104,4 +105,91 @@
 			</ul>
 		</div>
 	</article>
+	
+	<!-- 代码编辑器弹窗 -->
+	<div class="code-editor-modal" ng-show="codeEditor.visible">
+		<div class="code-editor-overlay" ng-click="closeCodeEditor()"></div>
+		<div class="code-editor-container">
+			<div class="code-editor-header">
+				<div class="code-editor-title">
+					<i class="icon-code"></i>
+					<span ng-show="codeEditor.process">{{codeEditor.process.name}}</span>
+					<span class="code-editor-filename" ng-show="codeEditor.currentFile">- {{codeEditor.currentFile}}</span>
+					<span class="code-editor-modified" ng-show="codeEditor.modified">*</span>
+				</div>
+				<div class="code-editor-actions">
+					<button class="btn btn-back" ng-click="goBackFile()" ng-show="codeEditor.fileHistory.length > 0" title="返回上一个文件">
+						<i class="icon-arrow-left"></i>
+					</button>
+					<button class="btn btn-browse" ng-click="toggleFileBrowser()" title="浏览文件">
+						<i class="icon-folder-open"></i>
+					</button>
+					<button class="btn btn-refresh" ng-click="refreshDependencies()" title="刷新依赖">
+						<i class="icon-refresh"></i>
+					</button>
+					<button class="btn btn-save" ng-click="saveFile()" ng-disabled="!codeEditor.modified || codeEditor.saving" title="保存 (Ctrl+S)">
+						<i class="icon-save" ng-hide="codeEditor.saving"></i>
+						<i class="icon-spinner icon-spin" ng-show="codeEditor.saving"></i>
+						保存
+					</button>
+					<button class="btn btn-save-restart" ng-click="saveAndRestart()" ng-disabled="!codeEditor.modified || codeEditor.saving" title="保存并重启进程">
+						<i class="icon-bolt" ng-hide="codeEditor.saving"></i>
+						<i class="icon-spinner icon-spin" ng-show="codeEditor.saving"></i>
+						保存并重启
+					</button>
+					<button class="btn btn-close" ng-click="closeCodeEditor()" title="关闭">
+						<i class="icon-remove"></i>
+					</button>
+				</div>
+			</div>
+			
+			<div class="code-editor-message" ng-show="codeEditor.message" ng-class="{'success': codeEditor.messageType == 'success', 'error': codeEditor.messageType == 'error'}">
+				<i class="icon-ok" ng-show="codeEditor.messageType == 'success'"></i>
+				<i class="icon-warning-sign" ng-show="codeEditor.messageType == 'error'"></i>
+				{{codeEditor.message}}
+			</div>
+			
+			<div class="code-editor-body">
+				<!-- 文件浏览器侧边栏 -->
+				<div class="code-editor-sidebar" ng-show="codeEditor.showFileBrowser">
+					<div class="sidebar-header">
+						<span class="sidebar-title">文件浏览器</span>
+						<button class="btn-icon" ng-click="navigateUp()" title="上级目录">
+							<i class="icon-level-up"></i>
+						</button>
+					</div>
+					<div class="sidebar-path">{{codeEditor.currentDir}}</div>
+					<div class="sidebar-items">
+						<div class="sidebar-item" ng-repeat="item in codeEditor.dirItems" ng-click="clickBrowserItem(item)">
+							<i ng-class="item.isDirectory ? 'icon-folder-close' : getFileIcon(item.name)"></i>
+							<span>{{item.name}}</span>
+						</div>
+					</div>
+				</div>
+				
+				<!-- 代码编辑器主体 -->
+				<div class="code-editor-main">
+					<div class="code-editor-loading" ng-show="codeEditor.loading">
+						<i class="icon-spinner icon-spin"></i>
+						<span>正在加载...</span>
+					</div>
+					<div id="monaco-editor-container" ng-hide="codeEditor.loading"></div>
+				</div>
+				
+				<!-- 依赖文件侧边栏 -->
+				<div class="code-editor-dependencies" ng-show="codeEditor.dependencies.length > 0">
+					<div class="dependencies-header">
+						<i class="icon-link"></i>
+						<span>本地依赖</span>
+					</div>
+					<div class="dependencies-list">
+						<div class="dependency-item" ng-repeat="dep in codeEditor.dependencies" ng-click="openFile(dep.path)" title="{{dep.path}}">
+							<i class="icon-file-text"></i>
+							<span>{{dep.module}}</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
 </section>

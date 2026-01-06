@@ -132,6 +132,63 @@ WebSocketResponder.prototype.debugProcess = function(host, pm_id) {
 	});
 };
 
+// 代码编辑相关方法
+WebSocketResponder.prototype.getProcessScript = function(host, pm_id) {
+	this._send({
+		method: "getProcessScript",
+		args: [host, pm_id]
+	});
+};
+
+WebSocketResponder.prototype.readFile = function(filePath) {
+	this._send({
+		method: "readFile",
+		args: [filePath]
+	});
+};
+
+WebSocketResponder.prototype.saveFile = function(filePath, content) {
+	this._send({
+		method: "saveFile",
+		args: [filePath, content]
+	});
+};
+
+WebSocketResponder.prototype.getFileDependencies = function(filePath) {
+	this._send({
+		method: "getFileDependencies",
+		args: [filePath]
+	});
+};
+
+WebSocketResponder.prototype.listDirectory = function(dirPath) {
+	this._send({
+		method: "listDirectory",
+		args: [dirPath]
+	});
+};
+
+// 代码编辑相关事件处理
+WebSocketResponder.prototype.onProcessScript = function(result) {
+	this.emit("processScript", result);
+};
+
+WebSocketResponder.prototype.onFileContent = function(result) {
+	this.emit("fileContent", result);
+};
+
+WebSocketResponder.prototype.onFileSaved = function(result) {
+	this.emit("fileSaved", result);
+};
+
+WebSocketResponder.prototype.onFileDependencies = function(result) {
+	this.emit("fileDependencies", result);
+};
+
+WebSocketResponder.prototype.onDirectoryList = function(result) {
+	this.emit("directoryList", result);
+};
+
 WebSocketResponder.READYSTATE = READYSTATE;
 
 module.exports = WebSocketResponder;

@@ -800,3 +800,416 @@ section h2::before {
 .table th, .table td {
   border: none !important;
 }
+
+/* Code Editor Button */
+.processes .information .actions a.icon-code {
+  font-size: 14px;
+}
+
+.processes .information .actions a.icon-code:hover {
+  color: white;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+}
+
+/* Code Editor Modal */
+.code-editor-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.code-editor-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.code-editor-container {
+  position: relative;
+  width: 95vw;
+  height: 90vh;
+  max-width: 1600px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.code-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.code-editor-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.code-editor-title i {
+  color: var(--accent-purple);
+  font-size: 18px;
+}
+
+.code-editor-filename {
+  font-weight: 400;
+  color: var(--text-secondary);
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 14px;
+  max-width: 500px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-editor-modified {
+  color: var(--accent-yellow);
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.code-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-editor-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.code-editor-actions .btn i {
+  font-size: 14px;
+}
+
+.code-editor-actions .btn-back,
+.code-editor-actions .btn-browse,
+.code-editor-actions .btn-refresh {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 8px 12px;
+}
+
+.code-editor-actions .btn-back:hover,
+.code-editor-actions .btn-browse:hover,
+.code-editor-actions .btn-refresh:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.code-editor-actions .btn-save {
+  background: var(--accent-green);
+  color: white;
+}
+
+.code-editor-actions .btn-save:hover:not(:disabled) {
+  background: #16a34a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+}
+
+.code-editor-actions .btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.code-editor-actions .btn-save-restart {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  color: white;
+}
+
+.code-editor-actions .btn-save-restart:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.code-editor-actions .btn-save-restart:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.code-editor-actions .btn-close {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  padding: 8px 12px;
+}
+
+.code-editor-actions .btn-close:hover {
+  background: var(--accent-red);
+  color: white;
+}
+
+/* Code Editor Message */
+.code-editor-message {
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-editor-message.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--accent-green);
+  border-bottom: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.code-editor-message.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-red);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Code Editor Body */
+.code-editor-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* File Browser Sidebar */
+.code-editor-sidebar {
+  width: 280px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.sidebar-header .btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: var(--transition);
+}
+
+.sidebar-header .btn-icon:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sidebar-path {
+  padding: 8px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, monospace;
+  background: var(--bg-tertiary);
+  word-break: break-all;
+}
+
+.sidebar-items {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.sidebar-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-item i {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.sidebar-item i.icon-folder-close {
+  color: var(--accent-yellow);
+}
+
+/* Code Editor Main Area */
+.code-editor-main {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.code-editor-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.code-editor-loading i {
+  font-size: 32px;
+  color: var(--accent-blue);
+}
+
+#monaco-editor-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Dependencies Sidebar */
+.code-editor-dependencies {
+  width: 220px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.dependencies-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.dependencies-header i {
+  color: var(--accent-cyan);
+}
+
+.dependencies-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.dependency-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 13px;
+  color: var(--accent-cyan);
+}
+
+.dependency-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent-blue);
+}
+
+.dependency-item i {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+/* Icon spin animation */
+.icon-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Responsive adjustments */
+@media only screen and (max-width: 1200px) {
+  .code-editor-sidebar {
+    width: 240px;
+  }
+  
+  .code-editor-dependencies {
+    width: 180px;
+  }
+}
+
+@media only screen and (max-width: 900px) {
+  .code-editor-container {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+  
+  .code-editor-sidebar,
+  .code-editor-dependencies {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 10;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+  }
+  
+  .code-editor-sidebar {
+    left: 0;
+    width: 280px;
+  }
+  
+  .code-editor-dependencies {
+    right: 0;
+    width: 220px;
+  }
+  
+  .code-editor-filename {
+    max-width: 200px;
+  }
+  
+  .code-editor-actions .btn span {
+    display: none;
+  }
+}

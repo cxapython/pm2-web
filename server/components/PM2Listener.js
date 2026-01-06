@@ -4,10 +4,60 @@ var Autowire = require("wantsit").Autowire,
 	semver = require("semver"),
 	pm2 = require("pm2"),
 	os = require("os"),
+	fs = require("fs"),
+	path = require("path"),
 	{ execSync } = require("child_process"),
 	pkg = require(__dirname + "/../../package.json");
 
 var DEFAULT_DEBUG_PORT = 5858;
+var DEFAULT_HISTORY_LINES = 100; // 默认读取最后100行历史日志
+
+// 读取文件最后N行
+function readLastLines(filePath, maxLines) {
+	return new Promise(function(resolve, reject) {
+		try {
+			if (!fs.existsSync(filePath)) {
+				return resolve([]);
+			}
+			
+			var stats = fs.statSync(filePath);
+			if (stats.size === 0) {
+				return resolve([]);
+			}
+			
+			// 对于大文件，从末尾开始读取
+			var bufferSize = Math.min(stats.size, maxLines * 500); // 估算每行约500字节
+			var buffer = Buffer.alloc(bufferSize);
+			var fd = fs.openSync(filePath, 'r');
+			
+			try {
+				var startPos = Math.max(0, stats.size - bufferSize);
+				fs.readSync(fd, buffer, 0, bufferSize, startPos);
+				
+				var content = buffer.toString('utf8');
+				var lines = content.split('\n').filter(function(line) {
+					return line.trim().length > 0;
+				});
+				
+				// 如果不是从文件开头读取，丢弃第一行（可能不完整）
+				if (startPos > 0 && lines.length > 0) {
+					lines.shift();
+				}
+				
+				// 只取最后N行
+				if (lines.length > maxLines) {
+					lines = lines.slice(-maxLines);
+				}
+				
+				resolve(lines);
+			} finally {
+				fs.closeSync(fd);
+			}
+		} catch (e) {
+			resolve([]);
+		}
+	});
+}
 
 // 获取更准确的可用内存（macOS 特殊处理）
 function getAvailableMemory() {
@@ -64,6 +114,8 @@ var PM2Listener = function() {
 
 	this._connected = false;
 	this._intervalId = null;
+	this._processLogPaths = {}; // 存储进程日志路径
+	this._loadedHistoryLogs = {}; // 跟踪已加载过历史日志的进程
 };
 util.inherits(PM2Listener, EventEmitter);
 
@@ -160,6 +212,73 @@ PM2Listener.prototype._getSystemData = function() {
 
 		var systemData = self._mapSystemData(processList);
 		self.emit("systemData", systemData);
+		
+		// 为新进程加载历史日志
+		self._loadHistoryLogsForNewProcesses(processList);
+	});
+};
+
+PM2Listener.prototype._loadHistoryLogsForNewProcesses = function(processList) {
+	var self = this;
+	var maxLines = this._config.get("logs:historyLines") || DEFAULT_HISTORY_LINES;
+	
+	processList.forEach(function(proc) {
+		if (!proc || !proc.pm2_env) return;
+		
+		var pm_id = proc.pm_id;
+		var logKey = "localhost:" + pm_id;
+		
+		// 如果已经加载过历史日志，跳过
+		if (self._loadedHistoryLogs[logKey]) {
+			return;
+		}
+		
+		var pm2_env = proc.pm2_env;
+		var outLogPath = pm2_env.pm_out_log_path;
+		var errLogPath = pm2_env.pm_err_log_path;
+		
+		self._loadedHistoryLogs[logKey] = true;
+		
+		// 异步加载历史日志
+		var loadPromises = [];
+		
+		if (outLogPath) {
+			loadPromises.push(
+				readLastLines(outLogPath, maxLines).then(function(lines) {
+					lines.forEach(function(line) {
+						self.emit('log:out', {
+							name: 'localhost',
+							process: { pm_id: pm_id },
+							data: line,
+							isHistory: true
+						});
+					});
+				})
+			);
+		}
+		
+		if (errLogPath) {
+			loadPromises.push(
+				readLastLines(errLogPath, maxLines).then(function(lines) {
+					lines.forEach(function(line) {
+						self.emit('log:err', {
+							name: 'localhost',
+							process: { pm_id: pm_id },
+							data: line,
+							isHistory: true
+						});
+					});
+				})
+			);
+		}
+		
+		if (loadPromises.length > 0) {
+			Promise.all(loadPromises).then(function() {
+				self._logger.info("Loaded history logs for process", { pm_id: pm_id, name: pm2_env.name });
+			}).catch(function(err) {
+				self._logger.warn("Error loading history logs", { pm_id: pm_id, error: err.message });
+			});
+		}
 	});
 };
 
@@ -363,6 +482,312 @@ PM2Listener.prototype._findDebugPort = function(execArgv) {
 	}
 
 	return port;
+};
+
+// 获取进程的脚本路径信息
+PM2Listener.prototype.getProcessScript = function(pm_id, callback) {
+	var self = this;
+	
+	pm2.describe(pm_id, function(err, proc) {
+		if (err || !proc || proc.length === 0) {
+			return callback({ error: '无法找到进程' });
+		}
+		
+		var processInfo = proc[0];
+		var pm2_env = processInfo.pm2_env || {};
+		
+		callback({
+			pm_id: pm_id,
+			name: pm2_env.name,
+			script: pm2_env.pm_exec_path,
+			cwd: pm2_env.pm_cwd,
+			interpreter: pm2_env.exec_interpreter || 'node'
+		});
+	});
+};
+
+// 读取文件内容
+PM2Listener.prototype.readFile = function(filePath, callback) {
+	var self = this;
+	
+	// 安全检查：只允许读取特定类型的源代码文件
+	var allowedExtensions = ['.js', '.ts', '.py', '.rb', '.php', '.sh', '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.md', '.txt', '.html', '.css', '.vue', '.jsx', '.tsx'];
+	var ext = path.extname(filePath).toLowerCase();
+	
+	if (!allowedExtensions.includes(ext) && ext !== '') {
+		return callback({ error: '不支持的文件类型: ' + ext });
+	}
+	
+	// 检查文件是否存在
+	if (!fs.existsSync(filePath)) {
+		return callback({ error: '文件不存在: ' + filePath });
+	}
+	
+	try {
+		var stats = fs.statSync(filePath);
+		
+		// 限制文件大小（最大 5MB）
+		if (stats.size > 5 * 1024 * 1024) {
+			return callback({ error: '文件过大，超过 5MB 限制' });
+		}
+		
+		var content = fs.readFileSync(filePath, 'utf8');
+		
+		callback({
+			path: filePath,
+			content: content,
+			size: stats.size,
+			mtime: stats.mtime
+		});
+	} catch (e) {
+		self._logger.error('读取文件失败', { path: filePath, error: e.message });
+		callback({ error: '读取文件失败: ' + e.message });
+	}
+};
+
+// 保存文件内容
+PM2Listener.prototype.saveFile = function(filePath, content, callback) {
+	var self = this;
+	
+	// 安全检查：只允许写入特定类型的源代码文件
+	var allowedExtensions = ['.js', '.ts', '.py', '.rb', '.php', '.sh', '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.md', '.txt', '.html', '.css', '.vue', '.jsx', '.tsx'];
+	var ext = path.extname(filePath).toLowerCase();
+	
+	if (!allowedExtensions.includes(ext) && ext !== '') {
+		return callback({ error: '不支持的文件类型: ' + ext });
+	}
+	
+	try {
+		// 创建备份
+		if (fs.existsSync(filePath)) {
+			var backupPath = filePath + '.backup.' + Date.now();
+			fs.copyFileSync(filePath, backupPath);
+			self._logger.info('创建文件备份', { original: filePath, backup: backupPath });
+		}
+		
+		fs.writeFileSync(filePath, content, 'utf8');
+		
+		self._logger.info('文件已保存', { path: filePath });
+		
+		callback({
+			success: true,
+			path: filePath,
+			message: '文件保存成功'
+		});
+	} catch (e) {
+		self._logger.error('保存文件失败', { path: filePath, error: e.message });
+		callback({ error: '保存文件失败: ' + e.message });
+	}
+};
+
+// 解析 Python 文件的导入依赖
+PM2Listener.prototype._parsePythonImports = function(content, cwd) {
+	var imports = [];
+	var lines = content.split('\n');
+	
+	lines.forEach(function(line) {
+		// 匹配 from xxx import yyy 和 import xxx
+		var fromMatch = line.match(/^\s*from\s+([^\s]+)\s+import/);
+		var importMatch = line.match(/^\s*import\s+([^\s,]+)/);
+		
+		var moduleName = null;
+		if (fromMatch) {
+			moduleName = fromMatch[1];
+		} else if (importMatch) {
+			moduleName = importMatch[1];
+		}
+		
+		if (moduleName && !moduleName.startsWith('.')) {
+			// 转换模块名为路径
+			var modulePath = moduleName.replace(/\./g, '/');
+			var possiblePaths = [
+				path.join(cwd, modulePath + '.py'),
+				path.join(cwd, modulePath, '__init__.py'),
+				path.join(cwd, modulePath + '/main.py')
+			];
+			
+			possiblePaths.forEach(function(p) {
+				if (fs.existsSync(p)) {
+					imports.push({
+						module: moduleName,
+						path: p,
+						exists: true
+					});
+				}
+			});
+		} else if (moduleName && moduleName.startsWith('.')) {
+			// 相对导入
+			var relativePath = moduleName.replace(/\./g, '/').slice(1);
+			var possiblePath = path.join(cwd, relativePath + '.py');
+			if (fs.existsSync(possiblePath)) {
+				imports.push({
+					module: moduleName,
+					path: possiblePath,
+					exists: true
+				});
+			}
+		}
+	});
+	
+	return imports;
+};
+
+// 解析 JavaScript/Node.js 文件的导入依赖
+PM2Listener.prototype._parseJsImports = function(content, filePath) {
+	var imports = [];
+	var cwd = path.dirname(filePath);
+	
+	// 匹配 require() 和 import 语句
+	var requireRegex = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+	var importRegex = /import\s+(?:[\w{}\s,*]+\s+from\s+)?['"]([^'"]+)['"]/g;
+	
+	var match;
+	var seen = {};
+	
+	while ((match = requireRegex.exec(content)) !== null) {
+		var modulePath = match[1];
+		if (modulePath.startsWith('.') && !seen[modulePath]) {
+			seen[modulePath] = true;
+			var resolvedPath = this._resolveJsPath(modulePath, cwd);
+			if (resolvedPath) {
+				imports.push({
+					module: modulePath,
+					path: resolvedPath,
+					exists: true
+				});
+			}
+		}
+	}
+	
+	while ((match = importRegex.exec(content)) !== null) {
+		var modulePath = match[1];
+		if (modulePath.startsWith('.') && !seen[modulePath]) {
+			seen[modulePath] = true;
+			var resolvedPath = this._resolveJsPath(modulePath, cwd);
+			if (resolvedPath) {
+				imports.push({
+					module: modulePath,
+					path: resolvedPath,
+					exists: true
+				});
+			}
+		}
+	}
+	
+	return imports;
+};
+
+// 解析 JS 模块路径
+PM2Listener.prototype._resolveJsPath = function(modulePath, cwd) {
+	var extensions = ['.js', '.ts', '.jsx', '.tsx', '.json', '/index.js', '/index.ts'];
+	var fullPath = path.resolve(cwd, modulePath);
+	
+	// 直接路径
+	if (fs.existsSync(fullPath)) {
+		var stat = fs.statSync(fullPath);
+		if (stat.isFile()) {
+			return fullPath;
+		} else if (stat.isDirectory()) {
+			// 检查 index 文件
+			for (var i = 0; i < extensions.length; i++) {
+				if (extensions[i].startsWith('/')) {
+					var indexPath = fullPath + extensions[i];
+					if (fs.existsSync(indexPath)) {
+						return indexPath;
+					}
+				}
+			}
+		}
+	}
+	
+	// 带扩展名
+	for (var i = 0; i < extensions.length; i++) {
+		if (!extensions[i].startsWith('/')) {
+			var withExt = fullPath + extensions[i];
+			if (fs.existsSync(withExt)) {
+				return withExt;
+			}
+		}
+	}
+	
+	return null;
+};
+
+// 获取文件的本地依赖
+PM2Listener.prototype.getFileDependencies = function(filePath, callback) {
+	var self = this;
+	
+	if (!fs.existsSync(filePath)) {
+		return callback({ error: '文件不存在: ' + filePath });
+	}
+	
+	try {
+		var content = fs.readFileSync(filePath, 'utf8');
+		var ext = path.extname(filePath).toLowerCase();
+		var cwd = path.dirname(filePath);
+		var dependencies = [];
+		
+		if (ext === '.py') {
+			dependencies = this._parsePythonImports(content, cwd);
+		} else if (['.js', '.ts', '.jsx', '.tsx', '.mjs'].includes(ext)) {
+			dependencies = this._parseJsImports(content, filePath);
+		}
+		
+		callback({
+			path: filePath,
+			dependencies: dependencies
+		});
+	} catch (e) {
+		self._logger.error('解析依赖失败', { path: filePath, error: e.message });
+		callback({ error: '解析依赖失败: ' + e.message });
+	}
+};
+
+// 列出目录内容
+PM2Listener.prototype.listDirectory = function(dirPath, callback) {
+	var self = this;
+	
+	if (!fs.existsSync(dirPath)) {
+		return callback({ error: '目录不存在: ' + dirPath });
+	}
+	
+	try {
+		var stat = fs.statSync(dirPath);
+		if (!stat.isDirectory()) {
+			return callback({ error: '不是目录: ' + dirPath });
+		}
+		
+		var items = fs.readdirSync(dirPath).map(function(name) {
+			var itemPath = path.join(dirPath, name);
+			try {
+				var itemStat = fs.statSync(itemPath);
+				return {
+					name: name,
+					path: itemPath,
+					isDirectory: itemStat.isDirectory(),
+					size: itemStat.size,
+					mtime: itemStat.mtime
+				};
+			} catch (e) {
+				return null;
+			}
+		}).filter(function(item) {
+			return item !== null;
+		}).sort(function(a, b) {
+			// 目录排在前面
+			if (a.isDirectory && !b.isDirectory) return -1;
+			if (!a.isDirectory && b.isDirectory) return 1;
+			return a.name.localeCompare(b.name);
+		});
+		
+		callback({
+			path: dirPath,
+			items: items
+		});
+	} catch (e) {
+		self._logger.error('列出目录失败', { path: dirPath, error: e.message });
+		callback({ error: '列出目录失败: ' + e.message });
+	}
 };
 
 module.exports = PM2Listener;

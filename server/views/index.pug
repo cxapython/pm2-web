@@ -32,6 +32,13 @@ html(lang='zh-CN', ng-app='pm2-web')
     script(type='text/javascript', src='/js/vendor/highcharts/highcharts-all.js')
     script(type='text/javascript', src='/js/vendor/highcharts-ng/highcharts-ng.min.js')
     script(type='text/javascript', src='/js/monitor.js')
+    //- Monaco Editor
+    script(type='text/javascript', src='https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js')
+    script.
+      require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+      require(['vs/editor/editor.main'], function() {
+        console.log('Monaco Editor loaded');
+      });
     link(rel='stylesheet', href='/css/reset.css')
     link(rel='stylesheet', href='/css/bootstrap.css')
     link(rel='stylesheet', href='/css/style.css')
