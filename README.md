@@ -30,16 +30,10 @@
 
 ## 安装
 
-### 全局安装（推荐）
-
-```bash
-npm install -g pm2-web
-```
-
 ### 本地安装
 
 ```bash
-git clone https://github.com/achingbrain/pm2-web.git
+git clone https://github.com/cxapython/pm2-web.git
 cd pm2-web
 npm install
 ```
@@ -49,14 +43,7 @@ npm install
 ### 启动
 
 ```bash
-# 全局安装后
-pm2-web
-
-# 或本地运行
-npm start
-
-# 或开发模式（自动重启）
-npm run dev
+node pm2-web.js
 ```
 
 启动后访问 `http://localhost:9000` 即可查看 PM2 进程监控界面。
