@@ -5,7 +5,9 @@
 
 [PM2](https://github.com/Unitech/pm2) 进程管理器的 Web 监控界面。
 
-![pm2-web 截图](https://raw.github.com/achingbrain/pm2-web/master/assets/screenshot-1.0.png)
+![pm2-web 截图](https://raw.github.com/cxapython/pm2-web/master/assets/screenshot-1.0.png)
+
+![在线编辑代码](https://raw.github.com/cxapython/pm2-web/master/assets/screenshot-0.0.png)
 
 ## 特性
 
